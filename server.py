@@ -41,7 +41,7 @@ ALLOWED_MIME_TYPES = {
     'application/pdf', 'text/plain', 'image/jpeg', 'image/png', 
     'image/gif', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'text/csv', 'application/zip', 'application/x-rar-compressed'
+    'text/csv', 'application/zip', 'application/x-rar-compressed', 'application/octet-stream'
 }
 
 # File extension to MIME type mapping for better detection
@@ -58,7 +58,10 @@ FILE_EXTENSIONS = {
     '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     '.csv': 'text/csv',
     '.zip': 'application/zip',
-    '.rar': 'application/x-rar-compressed'
+    '.rar': 'application/x-rar-compressed',
+    '.encrypted': 'application/octet-stream',
+    '.enc': 'application/octet-stream',
+    '.bin': 'application/octet-stream'
 }
 
 # Storage Configuration
@@ -406,6 +409,10 @@ def validate_file_size(file_size):
 def validate_mime_type(file_data, filename=None):
     """Validate MIME type using file extension and content analysis"""
     try:
+        # Check if this is an encrypted file
+        if filename and (filename.endswith('.encrypted') or filename.endswith('.enc') or filename.endswith('.bin')):
+            return 'application/octet-stream'
+        
         # First try to get MIME type from filename extension
         if filename:
             mime_type, _ = mimetypes.guess_type(filename)
@@ -421,9 +428,11 @@ def validate_mime_type(file_data, filename=None):
                     return mime_type
         
         # If we can't determine the type, reject the file for security
-        raise InvalidFileTypeException("Could not determine file type")
+        raise InvalidFileTypeException(f"File type not allowed. Allowed types: {', '.join(ALLOWED_MIME_TYPES)}")
         
     except Exception as e:
+        if isinstance(e, InvalidFileTypeException):
+            raise e
         raise InvalidFileTypeException(f"Could not determine file type: {str(e)}")
 
 def scan_for_malware(file_data):
@@ -458,31 +467,39 @@ def upload_file():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
 
+        logging.info(f"Uploading file: {file.filename}")
+
         # Validate filename
         try:
             validate_filename(file.filename)
         except InvalidFilenameException as e:
+            logging.error(f"Filename validation failed: {str(e)}")
             return jsonify({'error': str(e)}), 400
 
         # Read file data
         file_data = file.read()
+        logging.info(f"File size: {len(file_data)} bytes")
         
         # Validate file size
         try:
             validate_file_size(len(file_data))
         except FileSizeExceededException as e:
+            logging.error(f"File size validation failed: {str(e)}")
             return jsonify({'error': str(e)}), 400
 
         # Validate MIME type
         try:
-            validate_mime_type(file_data, file.filename)
+            mime_type = validate_mime_type(file_data, file.filename)
+            logging.info(f"Detected MIME type: {mime_type}")
         except InvalidFileTypeException as e:
+            logging.error(f"MIME type validation failed: {str(e)}")
             return jsonify({'error': str(e)}), 400
 
         # Scan for malware
         try:
             scan_for_malware(file_data)
         except MalwareDetectedException as e:
+            logging.error(f"Malware scan failed: {str(e)}")
             return jsonify({'error': str(e)}), 400
 
         # Generate unique file ID and share ID
@@ -504,7 +521,7 @@ def upload_file():
             'size': len(file_data),
             'upload_date': datetime.utcnow().isoformat(),
             'encrypted': True,
-            'mime_type': mimetypes.guess_type(file.filename or '') or 'application/octet-stream'
+            'mime_type': mime_type
         }
         
         file_metadata[file_id] = metadata
