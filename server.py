@@ -114,7 +114,7 @@ else:
     azure_container = None
 
 # ClamAV Configuration
-if CLAMAV_AVAILABLE:
+if CLAMAV_AVAILABLE and clamd is not None:
     try:
         clamav = clamd.ClamdUnixSocket()
     except:

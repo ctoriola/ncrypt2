@@ -1,0 +1,24 @@
+# Backend files
+server.py
+requirements.txt
+Procfile
+runtime.txt
+railway.json
+Dockerfile
+.dockerignore
+install.sh
+start.sh
+uploads/
+env.local
+*.py
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Development files
+.git/
+.gitignore
+README.md
+DEPLOYMENT.md
+*.log 
