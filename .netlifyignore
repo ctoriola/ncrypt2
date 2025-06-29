@@ -1,4 +1,4 @@
-# Backend files
+# Backend files - exclude completely
 server.py
 requirements.txt
 Procfile
@@ -23,6 +23,11 @@ ENV/
 env.bak/
 venv.bak/
 
+# Python files
+*.py
+pip-log.txt
+pip-delete-this-directory.txt
+
 # Development files
 .git/
 .gitignore
@@ -34,4 +39,27 @@ hardening.nginx
 start.bat
 
 # Documentation
-*.md 
+*.md
+
+# Temporary files
+*.tmp
+*.temp
+.coverage
+.pytest_cache/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db 

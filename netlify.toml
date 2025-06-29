@@ -1,12 +1,14 @@
 [build]
-  # Build command for the frontend
-  command = "npm run build"
+  # Build command for the frontend only
+  command = "bash build.sh"
   # Publish directory (where the built frontend files are)
   publish = "dist"
 
 [build.environment]
   # Set Node.js version
   NODE_VERSION = "18"
+  # Disable Python detection
+  PYTHON_VERSION = ""
 
 # Ignore backend files during build
 [[headers]]
@@ -17,7 +19,7 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# Redirect API calls to your backend
+# Redirect API calls to your backend (update with your actual Railway URL)
 [[redirects]]
   from = "/api/*"
   to = "https://your-railway-url.railway.app/api/:splat"
