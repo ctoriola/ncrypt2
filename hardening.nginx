@@ -1,0 +1,10 @@
+# Nginx Configuration Snippets
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval';";
+add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload";
+add_header X-Content-Type-Options nosniff;
+add_header X-Frame-Options DENY;
+
+# TLS Configuration
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+ssl_prefer_server_ciphers on;
