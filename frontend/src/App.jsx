@@ -9,7 +9,9 @@ import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
 
 // API base URL - use environment variable or default to Railway backend
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://web-production-5d61.up.railway.app';
+const API_BASE_URL = import.meta.env.VITE_API_URL 
+  ? (import.meta.env.VITE_API_URL.startsWith('http') ? import.meta.env.VITE_API_URL : `https://${import.meta.env.VITE_API_URL}`)
+  : 'https://web-production-5d61.up.railway.app';
 
 function App() {
   const [darkMode, setDarkMode] = useState(false);

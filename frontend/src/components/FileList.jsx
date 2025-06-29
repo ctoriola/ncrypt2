@@ -3,7 +3,9 @@ import { toast } from 'react-toastify';
 import './FileList.css';
 
 // API base URL - use environment variable or default to Railway backend
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://web-production-5d61.up.railway.app';
+const API_BASE_URL = import.meta.env.VITE_API_URL 
+  ? (import.meta.env.VITE_API_URL.startsWith('http') ? import.meta.env.VITE_API_URL : `https://${import.meta.env.VITE_API_URL}`)
+  : 'https://web-production-5d61.up.railway.app';
 
 export function FileList({ files, loading, onDelete, onRefresh }) {
   const [downloading, setDownloading] = useState(null);
