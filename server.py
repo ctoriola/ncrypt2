@@ -6,16 +6,13 @@ import mimetypes
 import boto3
 import secrets
 import string
-from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, send_from_directory, Response
+from datetime import datetime
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 import logging
-import shutil
 from pathlib import Path
-from io import BytesIO
 
 # Optional ClamAV import
 try:
@@ -144,7 +141,7 @@ else:
 if CLAMAV_AVAILABLE and clamd is not None:
     try:
         clamav = clamd.ClamdUnixSocket()
-    except:
+    except Exception:
         clamav = None
         logging.warning("ClamAV not available - malware scanning disabled")
 else:
@@ -687,7 +684,7 @@ if __name__ == '__main__':
     if STORAGE_TYPE == 's3' and s3_client:
         try:
             s3_client.head_bucket(Bucket=SECURE_BUCKET)
-        except:
+        except Exception:
             s3_client.create_bucket(Bucket=SECURE_BUCKET)
             logging.info(f"Created S3 bucket: {SECURE_BUCKET}")
     
