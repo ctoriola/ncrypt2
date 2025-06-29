@@ -3,6 +3,9 @@ import { toast } from 'react-toastify';
 import { useDropzone } from 'react-dropzone';
 import './FileDecryptor.css';
 
+// API base URL - use environment variable or default to localhost
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 export function FileDecryptor() {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -45,7 +48,7 @@ export function FileDecryptor() {
       const formData = new FormData();
       formData.append('file', file, file.name);
 
-      const response = await fetch('/api/upload', {
+      const response = await fetch(`${API_BASE_URL}/api/upload`, {
         method: 'POST',
         body: formData
       });
@@ -68,7 +71,7 @@ export function FileDecryptor() {
   const fetchFiles = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/files');
+      const response = await fetch(`${API_BASE_URL}/api/files`);
       if (response.ok) {
         const data = await response.json();
         // Show all files, not just encrypted ones, so users can see everything
@@ -88,7 +91,7 @@ export function FileDecryptor() {
       setDecrypting(true);
       
       // Download the encrypted file
-      const response = await fetch(`/api/files/${fileId}`);
+      const response = await fetch(`${API_BASE_URL}/api/files/${fileId}`);
       if (!response.ok) {
         throw new Error('Failed to download file');
       }
@@ -172,7 +175,7 @@ export function FileDecryptor() {
   const handleDelete = async (fileId) => {
     if (window.confirm('Are you sure you want to delete this file?')) {
       try {
-        const response = await fetch(`/api/files/${fileId}`, {
+        const response = await fetch(`${API_BASE_URL}/api/files/${fileId}`, {
           method: 'DELETE'
         });
         
@@ -190,7 +193,7 @@ export function FileDecryptor() {
 
   const handleDownload = async (fileId, filename) => {
     try {
-      const response = await fetch(`/api/files/${fileId}`);
+      const response = await fetch(`${API_BASE_URL}/api/files/${fileId}`);
       if (!response.ok) {
         throw new Error('Failed to download file');
       }

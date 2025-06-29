@@ -16,14 +16,17 @@ import shutil
 from pathlib import Path
 from io import BytesIO
 
-# Load environment variables from env.local
-load_dotenv('env.local')
+# Load environment variables from env.local (development) or system env (production)
+if os.path.exists('env.local'):
+    load_dotenv('env.local')
+else:
+    load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=['*'])  # Allow all origins for now, configure properly in production
 
 # Configuration
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
+app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_FILE_SIZE', 100 * 1024 * 1024))  # 100MB max file size
 ALLOWED_MIME_TYPES = {
     'application/pdf', 'text/plain', 'image/jpeg', 'image/png', 
     'image/gif', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

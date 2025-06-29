@@ -3,6 +3,9 @@ import { useDropzone } from 'react-dropzone';
 import { toast } from 'react-toastify';
 import './SecureUploader.css';
 
+// API base URL - use environment variable or default to localhost
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 export function SecureUploader({ onUploadComplete }) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -63,7 +66,7 @@ export function SecureUploader({ onUploadComplete }) {
       const formData = new FormData();
       formData.append('file', encryptedFile, file.name + '.encrypted');
 
-      const response = await fetch('/api/upload', {
+      const response = await fetch(`${API_BASE_URL}/api/upload`, {
         method: 'POST',
         body: formData
       });

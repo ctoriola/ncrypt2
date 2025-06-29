@@ -8,6 +8,9 @@ import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
 
+// API base URL - use environment variable or default to localhost
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [activeTab, setActiveTab] = useState('upload'); // 'upload' or 'decrypt'
@@ -32,14 +35,16 @@ function App() {
   const loadFiles = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/files');
+      const response = await fetch(`${API_BASE_URL}/api/files`);
       if (response.ok) {
         const data = await response.json();
         setFiles(data.files || []);
       } else {
+        console.error('Failed to load files:', response.status, response.statusText);
         toast.error('Failed to load files');
       }
     } catch (error) {
+      console.error('Network error while loading files:', error);
       toast.error('Network error while loading files');
     } finally {
       setLoading(false);
