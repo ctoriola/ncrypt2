@@ -4,6 +4,8 @@ import uuid
 import json
 import mimetypes
 import boto3
+import secrets
+import string
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
@@ -439,9 +441,15 @@ def scan_for_malware(file_data):
         logging.error(f"Malware scan error: {e}")
         return True  # Continue if scan fails
 
+# Generate a short, shareable ID (8 characters, alphanumeric)
+def generate_share_id():
+    """Generate a short, shareable ID for files"""
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(8))
+
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    """Handle secure file upload"""
+    """Upload and store an encrypted file"""
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
@@ -449,94 +457,75 @@ def upload_file():
         file = request.files['file']
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
-        
-        # Handle missing or empty filenames (common on mobile)
-        original_filename = file.filename
-        if not original_filename or original_filename.strip() == '':
-            # Generate a filename based on content type or use timestamp
-            content_type = file.content_type or 'application/octet-stream'
-            extension = mimetypes.guess_extension(content_type) or '.bin'
-            original_filename = f"uploaded_file_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}{extension}"
-            logging.info(f"Generated filename for mobile upload: {original_filename}")
-        
-        # Log the filename for debugging
-        logging.info(f"Uploading file: {repr(original_filename)}")
-        
+
+        # Validate filename
+        try:
+            validate_filename(file.filename)
+        except InvalidFilenameException as e:
+            return jsonify({'error': str(e)}), 400
+
         # Read file data
         file_data = file.read()
-        file_size = len(file_data)
         
-        # Security validations
+        # Validate file size
         try:
-            validate_filename(original_filename)
-        except InvalidFilenameException as e:
-            logging.error(f"Filename validation failed: {original_filename} - {str(e)}")
-            return jsonify({'error': f'Invalid filename: {str(e)}'}), 400
-        
-        try:
-            validate_file_size(file_size)
+            validate_file_size(len(file_data))
         except FileSizeExceededException as e:
-            logging.error(f"File size validation failed: {file_size} bytes")
             return jsonify({'error': str(e)}), 400
-        
-        # Check if this is an encrypted file
-        is_encrypted = original_filename and original_filename.endswith('.encrypted')
-        
-        if is_encrypted:
-            # For encrypted files, use a generic MIME type
-            mime_type = 'application/octet-stream'
-        else:
-            # For regular files, validate MIME type
-            try:
-                mime_type = validate_mime_type(file_data, original_filename)
-            except InvalidFileTypeException as e:
-                logging.error(f"MIME type validation failed: {original_filename}")
-                return jsonify({'error': str(e)}), 400
-        
-        # Skip malware scanning for encrypted files
-        if not is_encrypted:
+
+        # Validate MIME type
+        try:
+            validate_mime_type(file_data, file.filename)
+        except InvalidFileTypeException as e:
+            return jsonify({'error': str(e)}), 400
+
+        # Scan for malware
+        try:
             scan_for_malware(file_data)
-        
-        # Generate unique file ID
+        except MalwareDetectedException as e:
+            return jsonify({'error': str(e)}), 400
+
+        # Generate unique file ID and share ID
         file_id = str(uuid.uuid4())
+        share_id = generate_share_id()
         
-        # Store file using storage backend
-        metadata = {
-            'original-filename': original_filename,
-            'mime-type': mime_type,
-            'upload-date': datetime.utcnow().isoformat(),
-            'file-size': str(file_size),
-            'encrypted': is_encrypted
-        }
-        
-        if not storage_backend.store_file(file_id, file_data, metadata):
-            return jsonify({'error': 'Failed to store file'}), 500
-        
+        # Ensure share_id is unique (in production, use database with unique constraint)
+        while share_id in [f.get('share_id') for f in file_metadata.values()]:
+            share_id = generate_share_id()
+
+        # Store file using appropriate backend
+        storage_backend.store_file(file_id, file_data)
+
         # Store metadata
-        file_metadata[file_id] = {
-            'filename': original_filename,
-            'mime_type': mime_type,
-            'size': file_size,
+        metadata = {
+            'id': file_id,
+            'share_id': share_id,
+            'filename': file.filename,
+            'size': len(file_data),
             'upload_date': datetime.utcnow().isoformat(),
-            'expires_at': (datetime.utcnow() + timedelta(days=30)).isoformat(),
-            'encrypted': is_encrypted
+            'encrypted': True,
+            'mime_type': mimetypes.guess_type(file.filename or '') or 'application/octet-stream'
         }
         
-        logging.info(f"File uploaded successfully: {original_filename} ({file_size} bytes)")
+        file_metadata[file_id] = metadata
+        
+        # Store metadata in storage backend
+        storage_backend.store_file(f"{file_id}.meta", json.dumps(metadata).encode('utf-8'))
+
+        logging.info(f"File uploaded successfully: {file_id} (share_id: {share_id})")
         
         return jsonify({
+            'success': True,
             'file_id': file_id,
-            'filename': original_filename,
-            'size': file_size,
-            'message': 'File uploaded successfully'
-        }), 200
-        
-    except SecurityException as e:
-        logging.error(f"Security exception during upload: {str(e)}")
-        return jsonify({'error': str(e)}), 400
+            'share_id': share_id,
+            'filename': file.filename,
+            'size': len(file_data),
+            'message': 'File encrypted and uploaded successfully'
+        }), 201
+
     except Exception as e:
-        logging.error(f"Upload error: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+        logging.error(f"Upload error: {str(e)}")
+        return jsonify({'error': f'Upload failed: {str(e)}'}), 500
 
 @app.route('/api/files', methods=['GET'])
 def list_files():
@@ -544,14 +533,27 @@ def list_files():
     try:
         files = []
         for file_id, metadata in file_metadata.items():
-            if datetime.fromisoformat(metadata['expires_at']) > datetime.utcnow():
+            # Check if file has share_id (new format) or expires_at (old format)
+            if 'share_id' in metadata:
+                # New format - include share_id
                 files.append({
                     'id': file_id,
+                    'share_id': metadata['share_id'],
                     'filename': metadata['filename'],
                     'size': metadata['size'],
                     'upload_date': metadata['upload_date'],
                     'encrypted': metadata.get('encrypted', False)
                 })
+            elif 'expires_at' in metadata:
+                # Old format - check expiration
+                if datetime.fromisoformat(metadata['expires_at']) > datetime.utcnow():
+                    files.append({
+                        'id': file_id,
+                        'filename': metadata['filename'],
+                        'size': metadata['size'],
+                        'upload_date': metadata['upload_date'],
+                        'encrypted': metadata.get('encrypted', False)
+                    })
         
         return jsonify({'files': files}), 200
     except Exception as e:
@@ -560,26 +562,42 @@ def list_files():
 
 @app.route('/api/files/<file_id>', methods=['GET'])
 def download_file(file_id):
-    """Download file by ID"""
+    """Download a file by ID (supports both UUID and share_id)"""
     try:
-        if file_id not in file_metadata:
-            return jsonify({'error': 'File not found'}), 404
+        # Check if file_id is a share_id (8 characters, alphanumeric)
+        if len(file_id) == 8 and file_id.isalnum():
+            # Search by share_id
+            file_meta = None
+            for meta in file_metadata.values():
+                if meta.get('share_id') == file_id:
+                    file_meta = meta
+                    break
+            
+            if not file_meta:
+                return jsonify({'error': 'File not found'}), 404
+        else:
+            # Search by UUID
+            file_meta = file_metadata.get(file_id)
+            if not file_meta:
+                return jsonify({'error': 'File not found'}), 404
+
+        # Retrieve file from storage
+        file_data = storage_backend.retrieve_file(file_meta['id'])
         
-        metadata = file_metadata[file_id]
-        
-        # Get file from storage backend
-        file_data = storage_backend.retrieve_file(file_id)
         if not file_data:
-            return jsonify({'error': 'Failed to retrieve file'}), 500
+            return jsonify({'error': 'File not found in storage'}), 404
+
+        # Create response with encrypted file
+        response = Response(file_data)
+        response.headers['Content-Type'] = 'application/octet-stream'
+        response.headers['Content-Disposition'] = f'attachment; filename="{file_meta["filename"]}.encrypted"'
+        response.headers['Content-Length'] = len(file_data)
         
-        # Create response with file data
-        response = Response(file_data, mimetype=metadata['mime_type'])
-        response.headers['Content-Disposition'] = f'attachment; filename="{metadata["filename"]}"'
         return response
-        
+
     except Exception as e:
-        logging.error(f"Download error: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+        logging.error(f"Download error: {str(e)}")
+        return jsonify({'error': f'Download failed: {str(e)}'}), 500
 
 @app.route('/api/files/<file_id>', methods=['DELETE'])
 def delete_file(file_id):
@@ -612,6 +630,37 @@ def health_check():
         'storage_type': STORAGE_TYPE,
         'clamav_available': clamav is not None
     }), 200
+
+@app.route('/api/search/<share_id>', methods=['GET'])
+def search_file(share_id):
+    """Search for a file by share ID and return metadata"""
+    try:
+        # Validate share_id format
+        if len(share_id) != 8 or not share_id.isalnum():
+            return jsonify({'error': 'Invalid share ID format'}), 400
+
+        # Search for file with matching share_id
+        file_meta = None
+        for meta in file_metadata.values():
+            if meta.get('share_id') == share_id:
+                file_meta = meta
+                break
+
+        if not file_meta:
+            return jsonify({'error': 'File not found'}), 404
+
+        # Return file metadata (without sensitive information)
+        return jsonify({
+            'found': True,
+            'filename': file_meta['filename'],
+            'size': file_meta['size'],
+            'upload_date': file_meta['upload_date'],
+            'share_id': file_meta['share_id']
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Search error: {str(e)}")
+        return jsonify({'error': f'Search failed: {str(e)}'}), 500
 
 if __name__ == '__main__':
     # Configure logging

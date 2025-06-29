@@ -9,6 +9,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL
 
 export function FileList({ files, loading, onDelete, onRefresh }) {
   const [downloading, setDownloading] = useState(null);
+  const [copying, setCopying] = useState(null);
 
   const handleDownload = async (fileId, filename) => {
     try {
@@ -34,6 +35,25 @@ export function FileList({ files, loading, onDelete, onRefresh }) {
       toast.error('Download failed: ' + error.message);
     } finally {
       setDownloading(null);
+    }
+  };
+
+  const handleCopyShareId = async (shareId) => {
+    try {
+      setCopying(shareId);
+      await navigator.clipboard.writeText(shareId);
+      toast.success('Share ID copied to clipboard!');
+    } catch (error) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = shareId;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      toast.success('Share ID copied to clipboard!');
+    } finally {
+      setCopying(null);
     }
   };
 
@@ -160,9 +180,40 @@ export function FileList({ files, loading, onDelete, onRefresh }) {
         <p className="file-size">{formatFileSize(file.size)}</p>
         <p className="file-date">{formatDate(file.upload_date)}</p>
         {file.encrypted && <p className="file-status">🔒 Encrypted</p>}
+        {file.share_id && (
+          <div className="share-id-container">
+            <p className="share-id-label">Share ID:</p>
+            <code className="share-id-code">{file.share_id}</code>
+          </div>
+        )}
       </div>
 
       <div className="file-actions">
+        {file.share_id && (
+          <button
+            className="action-btn copy-btn"
+            onClick={() => handleCopyShareId(file.share_id)}
+            disabled={copying === file.share_id}
+            title="Copy share ID"
+          >
+            {copying === file.share_id ? (
+              <div className="loading-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span>Copy ID</span>
+              </>
+            )}
+          </button>
+        )}
+
         <button
           className="action-btn download-btn"
           onClick={() => handleDownload(file.id, file.filename)}

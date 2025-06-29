@@ -83,7 +83,26 @@ export function SecureUploader({ onUploadComplete }) {
       setProgress(100);
       setUploading(false);
       setCurrentFile(null);
+      
+      // Show success message with share ID
       toast.success('File encrypted and uploaded successfully!');
+      
+      // Show share ID in a more prominent way
+      if (result.share_id) {
+        toast.info(
+          <div>
+            <p><strong>Share ID: {result.share_id}</strong></p>
+            <p>Share this ID with others to let them download your file.</p>
+          </div>,
+          {
+            autoClose: false,
+            closeOnClick: false,
+            draggable: true,
+            position: "top-center"
+          }
+        );
+      }
+      
       onUploadComplete();
 
     } catch (error) {

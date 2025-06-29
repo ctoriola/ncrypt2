@@ -1,280 +1,282 @@
-# 🔐 NCryp - Secure File Storage & Encryption
+# NCryp - Secure Encrypted File Transfer
 
-A modern, **zero-knowledge** file storage solution with client-side encryption. Your files are encrypted with **AES-256-GCM** before they leave your browser, ensuring maximum privacy and security. Perfect for sensitive documents, personal files, and secure collaboration.
+NCryp is a secure client-side encrypted file transfer application that allows users to upload files with end-to-end encryption and share them with others using unique share IDs.
 
-## ✨ Live Demo
+## Features
 
-**🚀 Deployed and Ready to Use:**
-- [Netlify](https://ncrypt.netlify.app)
+### 🔐 **Client-Side Encryption**
+- Files are encrypted in your browser before upload using AES-GCM
+- Your data never leaves your device unencrypted
+- Uses Web Crypto API for secure encryption
 
-### 🛡️ **Enterprise-Grade Security**
-- **AES-256-GCM encryption** - Military-grade encryption standard
-- **PBKDF2 key derivation** with 100,000 iterations
-- **Client-side encryption** - Files encrypted before upload
-- **Zero-knowledge architecture** - Server cannot access your files
-- **Cryptographically secure** random generation
+### 📤 **Easy File Sharing**
+- Upload files and get a unique 8-character share ID
+- Share the ID with anyone to let them download your encrypted file
+- No accounts or registration required
 
-### 📱 **Cross-Platform Compatibility**
-- **Mobile-friendly** - Works on iOS, Android, tablets
-- **Desktop optimized** - Windows, Mac, Linux
-- **Modern browsers** - Chrome, Firefox, Safari, Edge
-- **Responsive design** - Adapts to any screen size
+### 🔍 **Simple File Discovery**
+- Search for files using share IDs
+- Download encrypted files shared with you
+- Clean, intuitive interface
 
-### ☁️ **Flexible Storage Options**
-- **🏠 Local Storage** (default) - No cloud account needed
-- **☁️ AWS S3** - Production recommended
-- **🌐 Google Cloud Storage** - Alternative cloud option
-- **🔵 Azure Blob Storage** - Microsoft cloud option
+### 🛡️ **Security Features**
+- Malware scanning with ClamAV (optional)
+- File type validation
+- Size limits and security checks
+- Multiple storage backend support
 
-### 🎨 **Modern User Experience**
-- **Drag-and-drop** file uploads
-- **Real-time progress** tracking
-- **File management** with download/delete
-- **Dark/light mode** support
-- **Toast notifications** for feedback
+### 📱 **Modern UI**
+- Responsive design for all devices
+- Dark mode support
+- Drag-and-drop file upload
+- Progress tracking
 
-## 🚀 Quick Start (No Setup Required!)
+## How It Works
 
-### Option 1: Use the Live Demo
-1. Visit [https://ncryp-app.netlify.app](https://ncryp-app.netlify.app)
-2. Upload and encrypt your files instantly
-3. No installation or setup required!
+1. **Upload**: Drag and drop a file, enter a passphrase, and get a share ID
+2. **Share**: Send the share ID to anyone you want to share the file with
+3. **Download**: Recipients enter the share ID to download the encrypted file
+4. **Decrypt**: Use the original passphrase to decrypt the file
 
-### Option 2: Local Development
+## Quick Start
 
-#### Prerequisites
-- Node.js 16+ and npm
+### Prerequisites
 - Python 3.8+
+- Node.js 16+
+- npm or yarn
 
-#### Installation
-```bash
-# Clone the repository
-git clone https://github.com/ctoriola/NCrypt.git
-cd NCrypt
+### Installation
 
-# Install dependencies
-npm install
-pip install -r requirements.txt
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd NCryp
+   ```
 
-# Start the application
-start.bat  # Windows
-# or
-./start.sh  # Linux/Mac
+2. **Install backend dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-# Open http://localhost:3000
-```
+3. **Install frontend dependencies**
+   ```bash
+   cd frontend
+   npm install
+   cd ..
+   ```
 
-**That's it!** Files are stored locally by default - no cloud account needed!
+4. **Configure environment**
+   ```bash
+   cp env.example env.local
+   # Edit env.local with your configuration
+   ```
 
-## 🔐 How It Works
+5. **Start the application**
+   ```bash
+   # Windows
+   start.bat
+   
+   # Linux/Mac
+   ./start.sh
+   ```
 
-### **Encryption Process**
-```
-1. User selects file + enters passphrase
-2. Browser generates random salt (16 bytes) + IV (12 bytes)
-3. PBKDF2 derives 256-bit key from passphrase + salt
-4. AES-256-GCM encrypts file with key + IV
-5. Encrypted data uploaded to server
-6. Server stores encrypted blob (cannot decrypt)
-```
+   Or run manually:
+   ```bash
+   # Terminal 1 - Backend
+   python server.py
+   
+   # Terminal 2 - Frontend
+   cd frontend
+   npm run dev
+   ```
 
-### **Decryption Process**
-```
-1. User downloads encrypted file
-2. Browser extracts salt + IV from file
-3. PBKDF2 derives same key using passphrase + salt
-4. AES-256-GCM decrypts file using key + IV
-5. Original file restored to user's computer
-```
+6. **Open your browser**
+   Navigate to `http://localhost:5173`
 
-### **Security Architecture**
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Frontend      │    │   Backend       │    │   Storage       │
-│   (Netlify)     │◄──►│   (Railway)     │◄──►│   (Local/S3/etc)│
-│                 │    │                 │    │                 │
-│ • React App     │    │ • Flask Server  │    │ • File Storage  │
-│ • Encryption    │    │ • API Endpoints │    │ • Metadata      │
-│ • User Interface│    │ • File Handling │    │ • Security      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
-
-## 📁 Project Structure
-
-```
-NCrypt/
-├── frontend/              # React frontend (deployed to Netlify)
-│   ├── src/
-│   │   ├── components/    # React components
-│   │   ├── workers/       # Web Workers for encryption
-│   │   └── main.jsx       # Application entry point
-│   └── package.json       # Frontend dependencies
-├── server.py              # Flask backend (deployed to Railway)
-├── requirements.txt       # Python dependencies
-├── Dockerfile             # Container configuration
-├── railway.json           # Railway deployment config
-├── netlify.toml           # Netlify deployment config
-├── STORAGE_SETUP.md       # Storage backend setup guide
-└── README.md              # This file
-```
-
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 
-```env
-# Storage Configuration (default: local)
-STORAGE_TYPE=local
-LOCAL_STORAGE_PATH=/tmp/ncryp-uploads  # Railway-compatible path
+Create an `env.local` file with the following variables:
 
+```bash
 # Flask Configuration
-FLASK_ENV=production
+FLASK_ENV=development
+FLASK_DEBUG=true
 SECRET_KEY=your-secret-key-here
 
-# Security Configuration
+# File Upload Settings
 MAX_FILE_SIZE=104857600  # 100MB in bytes
 ALLOWED_EXTENSIONS=pdf,txt,jpg,jpeg,png,gif,doc,docx,xls,xlsx,csv,zip,rar
+
+# Storage Configuration
+STORAGE_TYPE=local  # local, s3, gcs, azure
+
+# Local Storage
+LOCAL_STORAGE_PATH=./uploads
+
+# AWS S3 (optional)
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_REGION=us-east-1
+S3_BUCKET_NAME=your-bucket-name
+
+# Google Cloud Storage (optional)
+GCS_BUCKET_NAME=your-bucket-name
+
+# Azure Blob Storage (optional)
+AZURE_CONNECTION_STRING=your-connection-string
+AZURE_CONTAINER_NAME=your-container-name
+
+# ClamAV (optional)
+CLAMAV_ENABLED=false
 ```
 
-### Cloud Storage Setup
+### Storage Backends
 
-See [STORAGE_SETUP.md](STORAGE_SETUP.md) for detailed cloud storage configuration.
+NCryp supports multiple storage backends:
 
-## 🏗️ Technical Architecture
+- **Local Storage** (default): Files stored on local filesystem
+- **AWS S3**: Cloud storage with Amazon S3
+- **Google Cloud Storage**: Cloud storage with Google Cloud
+- **Azure Blob Storage**: Cloud storage with Microsoft Azure
 
-### **Frontend (React + Vite)**
-- **React 18** with modern hooks and functional components
-- **Vite** for fast development and optimized builds
-- **Web Crypto API** for client-side encryption
-- **React Dropzone** for drag-and-drop file uploads
-- **Toast notifications** for user feedback
-- **Responsive design** for mobile compatibility
+See [STORAGE_SETUP.md](STORAGE_SETUP.md) for detailed setup instructions.
 
-### **Backend (Flask)**
-- **Flask** web framework with RESTful API
-- **Modular storage backends** (Local, S3, GCS, Azure)
-- **MIME type detection** using Python's mimetypes
-- **CORS support** for cross-origin requests
-- **Error handling** and logging
-- **Railway deployment** ready
+## Usage
 
-### **Security Layer**
-- **AES-256-GCM** encryption algorithm
-- **PBKDF2** key derivation with 100,000 iterations
-- **Cryptographically secure** random generation
-- **Client-side only** encryption/decryption
-- **Zero-knowledge** server architecture
+### Uploading and Sharing Files
 
-## 📊 API Endpoints
+1. Go to the "Upload & Share" tab
+2. Drag and drop a file or click to select
+3. Enter a secure passphrase (minimum 8 characters)
+4. Wait for encryption and upload to complete
+5. Copy the generated share ID
+6. Share the ID with others via email, messaging, etc.
+
+### Downloading Shared Files
+
+1. Go to the "Download Shared" tab
+2. Enter the 8-character share ID
+3. Click "Search" to find the file
+4. Click "Download Encrypted File" to download
+5. Go to the "Decrypt Files" tab to decrypt with the original passphrase
+
+### Decrypting Files
+
+1. Go to the "Decrypt Files" tab
+2. Select the encrypted file
+3. Enter the original passphrase
+4. Click "Decrypt" to download the original file
+
+## Security
+
+### Encryption Details
+- **Algorithm**: AES-GCM (Galois/Counter Mode)
+- **Key Derivation**: PBKDF2 with 100,000 iterations
+- **Key Size**: 256 bits
+- **Salt**: 16 bytes (random)
+- **IV**: 12 bytes (random)
+
+### Security Features
+- Client-side encryption (files encrypted before upload)
+- Secure key derivation from passphrase
+- File type validation
+- Malware scanning (optional)
+- No server-side access to unencrypted files
+
+## API Endpoints
 
 ### File Management
 - `POST /api/upload` - Upload encrypted file
-- `GET /api/files` - List uploaded files
-- `GET /api/files/<file_id>` - Download file
+- `GET /api/files` - List user's files
+- `GET /api/files/<file_id>` - Download file by ID or share ID
 - `DELETE /api/files/<file_id>` - Delete file
 
-### System
-- `GET /api/health` - Health check endpoint
+### File Sharing
+- `GET /api/search/<share_id>` - Search for file by share ID
 
-## 🚀 Deployment
+## Development
 
-### **Production Deployment (Current)**
+### Project Structure
+```
+NCryp/
+├── server.py              # Flask backend
+├── requirements.txt       # Python dependencies
+├── env.example           # Environment template
+├── frontend/             # React frontend
+│   ├── src/
+│   │   ├── components/   # React components
+│   │   ├── App.jsx       # Main app component
+│   │   └── main.jsx      # App entry point
+│   ├── package.json      # Node dependencies
+│   └── vite.config.js    # Vite configuration
+└── uploads/              # Local file storage
+```
 
-The application is currently deployed using:
+### Running in Development
 
-- **Frontend**: Netlify (automatic deployment from GitHub)
-- **Backend**: Railway (automatic deployment from GitHub)
-- **Storage**: Local filesystem on Railway
-
-### **Local Development**
 ```bash
-# Terminal 1: Backend
+# Backend (Flask)
 python server.py
 
-# Terminal 2: Frontend  
+# Frontend (React + Vite)
+cd frontend
 npm run dev
 ```
 
-### **Docker Deployment**
+### Building for Production
+
 ```bash
-# Build and run with Docker
-docker build -t ncryp .
-docker run -p 8000:8000 ncryp
+# Build frontend
+cd frontend
+npm run build
+
+# Serve with Flask
+python server.py
 ```
 
-## 🔐 Security Features
+## Deployment
 
-### **Client-Side Security**
-- ✅ Files encrypted before upload
-- ✅ Encryption keys never leave browser
-- ✅ Secure random generation for cryptographic operations
-- ✅ Input validation and sanitization
-- ✅ Mobile-compatible encryption
+### Railway
+1. Connect your GitHub repository to Railway
+2. Set environment variables in Railway dashboard
+3. Deploy automatically on push
 
-### **Server-Side Security**
-- ✅ HTTPS enforcement
-- ✅ Content Security Policy headers
-- ✅ File type validation
-- ✅ Secure file handling practices
-- ✅ Railway deployment security
+### Heroku
+1. Create a Heroku app
+2. Set environment variables
+3. Deploy using Git
 
-### **Data Privacy**
-- ✅ Zero-knowledge architecture
-- ✅ Server cannot decrypt file contents
-- ✅ No file content logging
-- ✅ Secure deletion of files
-- ✅ GDPR/HIPAA compliant design
+### Docker
+```bash
+docker build -t ncryp .
+docker run -p 5000:5000 ncryp
+```
 
-## 📱 Mobile Compatibility
-
-NCryp is fully optimized for mobile devices:
-
-- **Touch-friendly** interface
-- **Responsive design** adapts to screen size
-- **Mobile file picker** integration
-- **Optimized encryption** for mobile performance
-- **Cross-browser** compatibility
-
-## 💰 Cost Comparison
-
-| Storage Type | Setup Cost | Monthly Cost (100GB) | Scalability |
-|--------------|------------|---------------------|-------------|
-| **Local** | Free | Free | Limited |
-| **AWS S3** | Free | ~$2.30 | Excellent |
-| **Google Cloud** | Free | ~$2.00 | Excellent |
-| **Azure** | Free | ~$1.84 | Excellent |
-
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
-## 📝 License
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🆘 Support
+## Support
 
-- **Live Demo**: [https://ncryp-app.netlify.app](https://ncryp-app.netlify.app)
-- **Documentation**: [Wiki](https://github.com/ctoriola/NCrypt/wiki)
-- **Storage Setup**: [STORAGE_SETUP.md](STORAGE_SETUP.md)
-- **Issues**: [GitHub Issues](https://github.com/ctoriola/NCrypt/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/ctoriola/NCrypt/discussions)
+For support and questions:
+- Create an issue on GitHub
+- Check the documentation
+- Review the configuration examples
 
-## 🙏 Acknowledgments
+## Security Considerations
 
-- [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) for client-side encryption
-- [React](https://reactjs.org/) for the frontend framework
-- [Flask](https://flask.palletsprojects.com/) for the backend framework
-- [Railway](https://railway.app/) for backend hosting
-- [Netlify](https://netlify.com/) for frontend hosting
-- [AWS S3](https://aws.amazon.com/s3/), [Google Cloud Storage](https://cloud.google.com/storage), [Azure Blob Storage](https://azure.microsoft.com/services/storage/blobs/) for cloud storage options
-
----
-
-**🔐 Security Notice**: NCryp uses industry-standard encryption (AES-256-GCM) with zero-knowledge architecture. Your files are encrypted client-side and the server cannot access your data. Always keep your passphrases secure and never share them.
-
-**⭐ Star this repository if you find it useful!** 
+- Always use strong, unique passphrases
+- Share passphrases securely (not through the same channel as share IDs)
+- Regularly rotate passphrases for sensitive files
+- Consider the security implications of your chosen storage backend
+- Keep the application and dependencies updated 

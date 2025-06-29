@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { SecureUploader } from './components/SecureUploader';
 import { FileDecryptor } from './components/FileDecryptor';
 import { FileList } from './components/FileList';
+import { FileSearch } from './components/FileSearch';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { ToastContainer, toast } from 'react-toastify';
@@ -15,7 +16,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL
 
 function App() {
   const [darkMode, setDarkMode] = useState(false);
-  const [activeTab, setActiveTab] = useState('upload'); // 'upload' or 'decrypt'
+  const [activeTab, setActiveTab] = useState('upload'); // 'upload', 'decrypt', or 'search'
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -94,7 +95,17 @@ function App() {
                 <polyline points="7,10 12,15 17,10"></polyline>
                 <line x1="12" y1="15" x2="12" y2="3"></line>
               </svg>
-              Upload & Encrypt
+              Upload & Share
+            </button>
+            <button
+              className={`nav-tab ${activeTab === 'search' ? 'active' : ''}`}
+              onClick={() => setActiveTab('search')}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="M21 21l-4.35-4.35"></path>
+              </svg>
+              Download Shared
             </button>
             <button
               className={`nav-tab ${activeTab === 'decrypt' ? 'active' : ''}`}
@@ -113,9 +124,9 @@ function App() {
           {activeTab === 'upload' && (
             <>
               <section className="upload-section">
-                <h2>Secure File Upload</h2>
+                <h2>Secure File Upload & Sharing</h2>
                 <p className="description">
-                  Upload your files with client-side encryption. Your data is encrypted before it leaves your browser.
+                  Upload your files with client-side encryption and get a shareable ID to send to others.
                 </p>
                 <SecureUploader onUploadComplete={handleFileUploaded} />
               </section>
@@ -130,6 +141,12 @@ function App() {
                 />
               </section>
             </>
+          )}
+
+          {activeTab === 'search' && (
+            <section className="search-section">
+              <FileSearch />
+            </section>
           )}
 
           {activeTab === 'decrypt' && (
