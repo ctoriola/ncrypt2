@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { toast } from 'react-toastify';
 import './SecureUploader.css';
@@ -10,92 +10,30 @@ const API_BASE_URL = import.meta.env.VITE_API_URL
 
 export function SecureUploader({ onUploadComplete }) {
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadedFile, setUploadedFile] = useState(null);
+  const [progress, setProgress] = useState(0);
+  const [currentFile, setCurrentFile] = useState(null);
+  const workerRef = useRef(null);
 
   const onDrop = useCallback(async (acceptedFiles) => {
     if (acceptedFiles.length === 0) return;
 
     const file = acceptedFiles[0];
     
-    // Check file size (100MB limit)
-    const maxSize = 100 * 1024 * 1024; // 100MB
-    if (file.size > maxSize) {
-      toast.error('File size exceeds 100MB limit');
+    // Validate file size (100MB limit)
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error('File size must be less than 100MB');
       return;
     }
 
-    setUploading(true);
-    setUploadProgress(0);
-    setUploadedFile(null);
-
-    try {
-      // Simulate progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 200);
-
-      // Encrypt file using Web Worker
-      const encryptedData = await encryptFile(file);
-      
-      // Create FormData
-      const formData = new FormData();
-      formData.append('file', new Blob([encryptedData], { type: 'application/octet-stream' }), file.name + '.encrypted');
-
-      // Upload to server
-      const response = await fetch(`${API_BASE_URL}/api/upload`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-      });
-
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        if (result.limit_reached) {
-          toast.error(result.error);
-          // Show upgrade prompt
-          toast.info('Upgrade your plan to upload more files!', {
-            autoClose: 5000,
-            onClick: () => {
-              // Could trigger upgrade modal here
-            }
-          });
-        } else {
-          throw new Error(result.error || 'Upload failed');
-        }
-        return;
-      }
-
-      setUploadedFile({
-        filename: file.name,
-        shareId: result.share_id,
-        size: file.size
-      });
-
-      toast.success('File uploaded successfully!');
-      
-      if (onUploadComplete) {
-        onUploadComplete(result);
-      }
-
-    } catch (error) {
-      console.error('Upload error:', error);
-      toast.error(error.message || 'Upload failed');
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
+    // Get passphrase from user
+    const passphrase = prompt('Enter a secure passphrase for encryption:');
+    if (!passphrase || passphrase.length < 8) {
+      toast.error('Passphrase must be at least 8 characters long');
+      return;
     }
-  }, [onUploadComplete]);
+
+    await handleFileUpload(file, passphrase);
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -109,145 +47,209 @@ export function SecureUploader({ onUploadComplete }) {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
       'text/csv': ['.csv'],
       'application/zip': ['.zip'],
-      'application/x-rar-compressed': ['.rar'],
-      'application/octet-stream': ['.encrypted', '.enc', '.bin']
+      'application/x-rar-compressed': ['.rar']
     },
     multiple: false
   });
 
-  const encryptFile = async (file) => {
-    return new Promise((resolve, reject) => {
-      const worker = new Worker(new URL('../workers/encryption.worker.js', import.meta.url));
-      
-      worker.onmessage = (event) => {
-        if (event.data.error) {
-          reject(new Error(event.data.error));
-        } else {
-          resolve(event.data.encryptedData);
-        }
-        worker.terminate();
-      };
-
-      worker.onerror = (error) => {
-        reject(error);
-        worker.terminate();
-      };
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        worker.postMessage({
-          data: e.target.result,
-          key: crypto.getRandomValues(new Uint8Array(32))
-        });
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsArrayBuffer(file);
-    });
-  };
-
-  const copyShareId = async () => {
-    if (!uploadedFile?.shareId) return;
-    
+  const handleFileUpload = async (file, passphrase) => {
     try {
-      await navigator.clipboard.writeText(uploadedFile.shareId);
-      toast.success('Share ID copied to clipboard!');
+      setUploading(true);
+      setProgress(0);
+      setCurrentFile(file);
+
+      // Encrypt file in main thread (simpler approach)
+      const encryptedFile = await encryptFile(file, passphrase);
+      
+      // Update progress
+      setProgress(50);
+
+      // Upload encrypted file
+      const formData = new FormData();
+      formData.append('file', encryptedFile, file.name + '.encrypted');
+
+      const response = await fetch(`${API_BASE_URL}/api/upload`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Upload failed');
+      }
+
+      const result = await response.json();
+      
+      setProgress(100);
+      setUploading(false);
+      setCurrentFile(null);
+      
+      // Show success message with share ID
+      toast.success('File encrypted and uploaded successfully!');
+      
+      // Show share ID in a more prominent way
+      if (result.share_id) {
+        toast.info(
+          <div>
+            <p><strong>Share ID: {result.share_id}</strong></p>
+            <p>Share this ID with others to let them download your file.</p>
+          </div>,
+          {
+            autoClose: false,
+            closeOnClick: false,
+            draggable: true,
+            position: "top-center"
+          }
+        );
+      }
+      
+      onUploadComplete();
+
     } catch (error) {
-      toast.error('Failed to copy share ID');
+      setUploading(false);
+      setProgress(0);
+      setCurrentFile(null);
+      toast.error(`Upload failed: ${error.message}`);
     }
   };
 
-  const resetUpload = () => {
-    setUploadedFile(null);
-    setUploadProgress(0);
+  const encryptFile = async (file, passphrase) => {
+    try {
+      // Generate salt and derive key
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const baseKey = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(passphrase),
+        { name: "PBKDF2" },
+        false,
+        ["deriveKey"]
+      );
+
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: salt,
+          iterations: 100000,
+          hash: "SHA-256"
+        },
+        baseKey,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt"]
+      );
+
+      // Read file data
+      const fileBuffer = await file.arrayBuffer();
+      
+      // Generate IV
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      
+      // Encrypt file
+      const encrypted = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        fileBuffer
+      );
+
+      // Combine salt + iv + encrypted data
+      const combined = new Uint8Array(salt.length + iv.length + encrypted.byteLength);
+      combined.set(salt, 0);
+      combined.set(iv, salt.length);
+      combined.set(new Uint8Array(encrypted), salt.length + iv.length);
+
+      return new Blob([combined], { type: 'application/octet-stream' });
+    } catch (error) {
+      throw new Error(`Encryption failed: ${error.message}`);
+    }
+  };
+
+  const cancelUpload = () => {
+    setUploading(false);
+    setProgress(0);
+    setCurrentFile(null);
+    toast.info('Upload cancelled');
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   return (
     <div className="secure-uploader">
-      {!uploadedFile ? (
-        <div
-          {...getRootProps()}
-          className={`dropzone ${isDragActive ? 'active' : ''} ${uploading ? 'uploading' : ''}`}
-        >
-          <input {...getInputProps()} />
-          
-          {uploading ? (
-            <div className="upload-progress">
-              <div className="progress-circle">
-                <svg viewBox="0 0 36 36" className="progress-ring">
-                  <path
-                    d="M18 2.0845
-                      a 15.9155 15.9155 0 0 1 0 31.831
-                      a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="var(--border-color)"
-                    strokeWidth="2"
-                  />
-                  <path
-                    d="M18 2.0845
-                      a 15.9155 15.9155 0 0 1 0 31.831
-                      a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="var(--primary-color)"
-                    strokeWidth="2"
-                    strokeDasharray={`${uploadProgress}, 100`}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <span className="progress-text">{uploadProgress}%</span>
-              </div>
-              <p>Encrypting and uploading...</p>
+      <div
+        {...getRootProps()}
+        className={`dropzone ${isDragActive ? 'drag-active' : ''} ${uploading ? 'uploading' : ''}`}
+      >
+        <input {...getInputProps()} />
+        
+        {uploading ? (
+          <div className="upload-progress">
+            <div className="file-info">
+              <h3>Uploading: {currentFile?.name}</h3>
+              <p>Size: {formatFileSize(currentFile?.size)}</p>
             </div>
-          ) : (
-            <div className="upload-content">
-              <div className="upload-icon">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7,10 12,15 17,10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
+            
+            <div className="progress-container">
+              <div className="progress-bar">
+                <div 
+                  className="progress-fill" 
+                  style={{ width: `${progress}%` }}
+                ></div>
               </div>
-              <h3>Drop your file here</h3>
-              <p>or click to browse</p>
-              <div className="file-types">
-                <span>Supports: PDF, DOC, XLS, Images, ZIP, and more</span>
-                <span>Max size: 100MB</span>
-              </div>
+              <span className="progress-text">{progress}%</span>
             </div>
-          )}
+            
+            <button 
+              type="button" 
+              className="cancel-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                cancelUpload();
+              }}
+            >
+              Cancel Upload
+            </button>
+          </div>
+        ) : (
+          <div className="upload-prompt">
+            <div className="upload-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7,10 12,15 17,10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+            </div>
+            <h3>Drop your file here</h3>
+            <p>or click to browse</p>
+            <div className="supported-formats">
+              <small>Supported: PDF, DOC, DOCX, XLS, XLSX, TXT, CSV, Images, ZIP, RAR</small>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="security-info">
+        <div className="security-badge">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          <span>Client-side encryption</span>
         </div>
-      ) : (
-        <div className="upload-success">
-          <div className="success-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-              <polyline points="22,4 12,14.01 9,11.01"></polyline>
-            </svg>
-          </div>
-          <h3>File Uploaded Successfully!</h3>
-          <div className="file-info">
-            <p><strong>File:</strong> {uploadedFile.filename}</p>
-            <p><strong>Size:</strong> {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB</p>
-          </div>
-          <div className="share-section">
-            <p><strong>Share ID:</strong></p>
-            <div className="share-id-container">
-              <code className="share-id">{uploadedFile.shareId}</code>
-              <button className="copy-btn" onClick={copyShareId}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                </svg>
-              </button>
-            </div>
-            <p className="share-instructions">
-              Share this ID with others so they can download your encrypted file
-            </p>
-          </div>
-          <button className="upload-another-btn" onClick={resetUpload}>
-            Upload Another File
-          </button>
+        <div className="security-badge">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 12l2 2 4-4"></path>
+            <path d="M21 12c-1 0-2-1-2-2s1-2 2-2 2 1 2 2-1 2-2 2z"></path>
+            <path d="M3 12c1 0 2-1 2-2s-1-2-2-2-2 1-2 2 1 2 2 2z"></path>
+            <path d="M12 3c0 1-1 2-2 2s-2-1-2-2 1-2 2-2 2 1 2 2z"></path>
+            <path d="M12 21c0-1 1-2 2-2s2 1 2 2-1 2-2 2-2-1-2-2z"></path>
+          </svg>
+          <span>Zero-knowledge storage</span>
         </div>
-      )}
+      </div>
     </div>
   );
 } 

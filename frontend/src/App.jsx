@@ -3,8 +3,6 @@ import { SecureUploader } from './components/SecureUploader';
 import { FileDecryptor } from './components/FileDecryptor';
 import { FileList } from './components/FileList';
 import { FileSearch } from './components/FileSearch';
-import { Auth } from './components/Auth';
-import { UserProfile } from './components/UserProfile';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { ToastContainer, toast } from 'react-toastify';
@@ -21,18 +19,14 @@ function App() {
   const [activeTab, setActiveTab] = useState('upload'); // 'upload', 'decrypt', or 'search'
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState(null);
-  const [showAuth, setShowAuth] = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
-  const [userLoading, setUserLoading] = useState(true);
 
   useEffect(() => {
     // Check for saved dark mode preference
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
     setDarkMode(savedDarkMode);
     
-    // Load user info
-    loadUserInfo();
+    // Load files on mount
+    loadFiles();
   }, []);
 
   useEffect(() => {
@@ -41,27 +35,6 @@ function App() {
     localStorage.setItem('darkMode', darkMode);
   }, [darkMode]);
 
-  const loadUserInfo = async () => {
-    try {
-      setUserLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setUser(data.user);
-      } else {
-        setUser(null);
-      }
-    } catch (error) {
-      console.error('Failed to load user info:', error);
-      setUser(null);
-    } finally {
-      setUserLoading(false);
-    }
-  };
-
   const loadFiles = async () => {
     try {
       setLoading(true);
@@ -69,9 +42,7 @@ function App() {
       console.log('Calling API URL:', url);
       console.log('API_BASE_URL:', API_BASE_URL);
       
-      const response = await fetch(url, {
-        credentials: 'include'
-      });
+      const response = await fetch(url);
       console.log('Response status:', response.status);
       console.log('Response headers:', response.headers);
       
@@ -96,54 +67,20 @@ function App() {
   const handleFileUploaded = () => {
     toast.success('File uploaded successfully!');
     loadFiles(); // Refresh file list
-    loadUserInfo(); // Refresh user info to update upload count
   };
 
   const handleFileDeleted = (fileId) => {
     setFiles(files.filter(file => file.id !== fileId));
     toast.success('File deleted successfully!');
-    loadUserInfo(); // Refresh user info to update upload count
-  };
-
-  const handleAuthSuccess = (userData) => {
-    setUser(userData);
-    setShowAuth(false);
-    loadFiles(); // Load files for the authenticated user
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    setFiles([]);
-    setShowProfile(false);
-    toast.success('Logged out successfully');
   };
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
   };
 
-  if (userLoading) {
-    return (
-      <div className="app">
-        <div className="loading-screen">
-          <div className="loading-spinner">
-            <div className="spinner"></div>
-            <p>Loading...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="app">
-      <Header 
-        darkMode={darkMode} 
-        onToggleDarkMode={toggleDarkMode}
-        user={user}
-        onShowAuth={() => setShowAuth(true)}
-        onShowProfile={() => setShowProfile(true)}
-      />
+      <Header darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
       
       <main className="main-content">
         <div className="container">
@@ -190,11 +127,6 @@ function App() {
                 <h2>Secure File Upload & Sharing</h2>
                 <p className="description">
                   Upload your files with client-side encryption and get a shareable ID to send to others.
-                  {user && (
-                    <span className="upload-limit-info">
-                      {' '}You can upload {user.upload_limit - user.files_uploaded_count} more files.
-                    </span>
-                  )}
                 </p>
                 <SecureUploader onUploadComplete={handleFileUploaded} />
               </section>
@@ -226,23 +158,6 @@ function App() {
       </main>
 
       <Footer />
-      
-      {/* Authentication Modal */}
-      {showAuth && (
-        <Auth 
-          onAuthSuccess={handleAuthSuccess}
-          onClose={() => setShowAuth(false)}
-        />
-      )}
-
-      {/* User Profile Modal */}
-      {showProfile && (
-        <UserProfile 
-          user={user}
-          onLogout={handleLogout}
-          onClose={() => setShowProfile(false)}
-        />
-      )}
       
       <ToastContainer 
         position="bottom-right"
