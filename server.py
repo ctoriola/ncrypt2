@@ -4,7 +4,6 @@ import uuid
 import json
 import mimetypes
 import boto3
-import clamd
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
@@ -15,6 +14,15 @@ import logging
 import shutil
 from pathlib import Path
 from io import BytesIO
+
+# Optional ClamAV import
+try:
+    import clamd
+    CLAMAV_AVAILABLE = True
+except ImportError:
+    clamd = None
+    CLAMAV_AVAILABLE = False
+    logging.warning("ClamAV not available - malware scanning disabled")
 
 # Load environment variables from env.local (development) or system env (production)
 if os.path.exists('env.local'):
@@ -106,11 +114,14 @@ else:
     azure_container = None
 
 # ClamAV Configuration
-try:
-    clamav = clamd.ClamdUnixSocket()
-except:
+if CLAMAV_AVAILABLE:
+    try:
+        clamav = clamd.ClamdUnixSocket()
+    except:
+        clamav = None
+        logging.warning("ClamAV not available - malware scanning disabled")
+else:
     clamav = None
-    logging.warning("ClamAV not available - malware scanning disabled")
 
 # In-memory storage for demo (use Redis in production)
 file_metadata = {}
