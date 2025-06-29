@@ -342,10 +342,11 @@ def validate_filename(filename):
     if not filename or len(filename) > 200:
         raise InvalidFilenameException("Invalid filename")
     
-    # Allow common filename characters while preventing path traversal and other security issues
-    # Allow: letters, numbers, spaces, dots, hyphens, underscores, parentheses, brackets
-    # Prevent: path separators, control characters, and other potentially dangerous characters
-    if not re.match(r'^[a-zA-Z0-9\s\.\-_\(\)\[\]]{1,200}$', filename):
+    # Very permissive validation for mobile compatibility
+    # Only block: path separators, control characters, and null bytes
+    # Allow: most printable characters and Unicode
+    if not re.match(r'^[^\x00\x01-\x1f\x7f\/\\]{1,200}$', filename):
+        logging.warning(f"Filename validation failed for: {repr(filename)}")
         raise InvalidFilenameException("Filename contains invalid characters")
     
     # Additional security check: prevent path traversal attempts
@@ -409,13 +410,25 @@ def upload_file():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
+        # Log the filename for debugging
+        logging.info(f"Uploading file: {repr(file.filename)}")
+        
         # Read file data
         file_data = file.read()
         file_size = len(file_data)
         
         # Security validations
-        validate_filename(file.filename)
-        validate_file_size(file_size)
+        try:
+            validate_filename(file.filename)
+        except InvalidFilenameException as e:
+            logging.error(f"Filename validation failed: {file.filename} - {str(e)}")
+            return jsonify({'error': f'Invalid filename: {str(e)}'}), 400
+        
+        try:
+            validate_file_size(file_size)
+        except FileSizeExceededException as e:
+            logging.error(f"File size validation failed: {file_size} bytes")
+            return jsonify({'error': str(e)}), 400
         
         # Check if this is an encrypted file
         is_encrypted = file.filename and file.filename.endswith('.encrypted')
@@ -425,7 +438,11 @@ def upload_file():
             mime_type = 'application/octet-stream'
         else:
             # For regular files, validate MIME type
-            mime_type = validate_mime_type(file_data, file.filename)
+            try:
+                mime_type = validate_mime_type(file_data, file.filename)
+            except InvalidFileTypeException as e:
+                logging.error(f"MIME type validation failed: {file.filename}")
+                return jsonify({'error': str(e)}), 400
         
         # Skip malware scanning for encrypted files
         if not is_encrypted:
@@ -456,6 +473,8 @@ def upload_file():
             'encrypted': is_encrypted
         }
         
+        logging.info(f"File uploaded successfully: {file.filename} ({file_size} bytes)")
+        
         return jsonify({
             'file_id': file_id,
             'filename': file.filename,
@@ -464,6 +483,7 @@ def upload_file():
         }), 200
         
     except SecurityException as e:
+        logging.error(f"Security exception during upload: {str(e)}")
         return jsonify({'error': str(e)}), 400
     except Exception as e:
         logging.error(f"Upload error: {e}")
