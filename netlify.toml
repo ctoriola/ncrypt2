@@ -1,14 +1,20 @@
 [build]
-  # Build command for the frontend only
-  command = "bash build.sh"
+  # Force Node.js build only
+  command = "npm run build"
   # Publish directory (where the built frontend files are)
   publish = "dist"
 
 [build.environment]
   # Set Node.js version
   NODE_VERSION = "18"
-  # Disable Python detection
+  # Disable Python completely
   PYTHON_VERSION = ""
+  # Disable Python detection
+  PYTHON_RUNTIME = ""
+
+# Force Node.js build context
+[build.processing]
+  skip_processing = false
 
 # Ignore backend files during build
 [[headers]]
