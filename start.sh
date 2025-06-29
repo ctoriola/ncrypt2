@@ -1,5 +1,27 @@
 #!/bin/bash
 
+# Debug: Show current directory and files
+echo "Current directory: $(pwd)"
+echo "Files in current directory:"
+ls -la
+
+# Debug: Show Python version
+echo "Python version:"
+python --version
+
+# Debug: Show pip list
+echo "Installed packages:"
+pip list
+
+# Debug: Check if gunicorn is available
+echo "Checking gunicorn:"
+which gunicorn
+gunicorn --version
+
+# Start the application
+echo "Starting gunicorn..."
+gunicorn --bind 0.0.0.0:$PORT server:app
+
 # NCryp Development Startup Script
 
 echo "🚀 Starting NCryp Development Environment..."
