@@ -410,8 +410,17 @@ def upload_file():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
+        # Handle missing or empty filenames (common on mobile)
+        original_filename = file.filename
+        if not original_filename or original_filename.strip() == '':
+            # Generate a filename based on content type or use timestamp
+            content_type = file.content_type or 'application/octet-stream'
+            extension = mimetypes.guess_extension(content_type) or '.bin'
+            original_filename = f"uploaded_file_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}{extension}"
+            logging.info(f"Generated filename for mobile upload: {original_filename}")
+        
         # Log the filename for debugging
-        logging.info(f"Uploading file: {repr(file.filename)}")
+        logging.info(f"Uploading file: {repr(original_filename)}")
         
         # Read file data
         file_data = file.read()
@@ -419,9 +428,9 @@ def upload_file():
         
         # Security validations
         try:
-            validate_filename(file.filename)
+            validate_filename(original_filename)
         except InvalidFilenameException as e:
-            logging.error(f"Filename validation failed: {file.filename} - {str(e)}")
+            logging.error(f"Filename validation failed: {original_filename} - {str(e)}")
             return jsonify({'error': f'Invalid filename: {str(e)}'}), 400
         
         try:
@@ -431,7 +440,7 @@ def upload_file():
             return jsonify({'error': str(e)}), 400
         
         # Check if this is an encrypted file
-        is_encrypted = file.filename and file.filename.endswith('.encrypted')
+        is_encrypted = original_filename and original_filename.endswith('.encrypted')
         
         if is_encrypted:
             # For encrypted files, use a generic MIME type
@@ -439,9 +448,9 @@ def upload_file():
         else:
             # For regular files, validate MIME type
             try:
-                mime_type = validate_mime_type(file_data, file.filename)
+                mime_type = validate_mime_type(file_data, original_filename)
             except InvalidFileTypeException as e:
-                logging.error(f"MIME type validation failed: {file.filename}")
+                logging.error(f"MIME type validation failed: {original_filename}")
                 return jsonify({'error': str(e)}), 400
         
         # Skip malware scanning for encrypted files
@@ -453,7 +462,7 @@ def upload_file():
         
         # Store file using storage backend
         metadata = {
-            'original-filename': file.filename,
+            'original-filename': original_filename,
             'mime-type': mime_type,
             'upload-date': datetime.utcnow().isoformat(),
             'file-size': str(file_size),
@@ -465,7 +474,7 @@ def upload_file():
         
         # Store metadata
         file_metadata[file_id] = {
-            'filename': file.filename,
+            'filename': original_filename,
             'mime_type': mime_type,
             'size': file_size,
             'upload_date': datetime.utcnow().isoformat(),
@@ -473,11 +482,11 @@ def upload_file():
             'encrypted': is_encrypted
         }
         
-        logging.info(f"File uploaded successfully: {file.filename} ({file_size} bytes)")
+        logging.info(f"File uploaded successfully: {original_filename} ({file_size} bytes)")
         
         return jsonify({
             'file_id': file_id,
-            'filename': file.filename,
+            'filename': original_filename,
             'size': file_size,
             'message': 'File uploaded successfully'
         }), 200
