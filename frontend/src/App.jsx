@@ -35,12 +35,22 @@ function App() {
   const loadFiles = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/files`);
+      const url = `${API_BASE_URL}/api/files`;
+      console.log('Calling API URL:', url);
+      console.log('API_BASE_URL:', API_BASE_URL);
+      
+      const response = await fetch(url);
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('Response data:', data);
         setFiles(data.files || []);
       } else {
+        const errorText = await response.text();
         console.error('Failed to load files:', response.status, response.statusText);
+        console.error('Error response:', errorText);
         toast.error('Failed to load files');
       }
     } catch (error) {
