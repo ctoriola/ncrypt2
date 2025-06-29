@@ -7,8 +7,9 @@ import boto3
 import secrets
 import string
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, send_from_directory, Response
+from flask import Flask, request, jsonify, send_from_directory, Response, session
 from flask_cors import CORS
+from flask_login import LoginManager, current_user
 from werkzeug.utils import secure_filename
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
@@ -16,6 +17,10 @@ import logging
 import shutil
 from pathlib import Path
 from io import BytesIO
+
+# Import our models and auth
+from models import db, User, FileRecord, SubscriptionTier, AnonymousUser
+from auth import auth_bp, get_current_user_or_anonymous
 
 # Optional ClamAV import
 try:
@@ -37,6 +42,26 @@ CORS(app, origins=['*'])  # Allow all origins for now, configure properly in pro
 
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_FILE_SIZE', 100 * 1024 * 1024))  # 100MB max file size
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///ncryp.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Initialize extensions
+db.init_app(app)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'auth.login'
+
+@login_manager.user_loader
+def load_user(user_id):
+    if user_id.startswith('anon_'):
+        session_id = user_id.replace('anon_', '')
+        return AnonymousUser(session_id)
+    return User.query.get(int(user_id))
+
+# Register blueprints
+app.register_blueprint(auth_bp)
+
 ALLOWED_MIME_TYPES = {
     'application/pdf', 'text/plain', 'image/jpeg', 'image/png', 
     'image/gif', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -150,8 +175,10 @@ if CLAMAV_AVAILABLE and clamd is not None:
 else:
     clamav = None
 
-# In-memory storage for demo (use Redis in production)
-file_metadata = {}
+# Initialize database
+with app.app_context():
+    db.create_all()
+    logging.info("Database initialized")
 
 class SecurityException(Exception):
     pass
@@ -467,7 +494,22 @@ def upload_file():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
 
-        logging.info(f"Uploading file: {file.filename}")
+        # Get current user (authenticated or anonymous)
+        user = get_current_user_or_anonymous()
+        
+        # Check upload limits
+        if not user.can_upload:
+            return jsonify({'error': 'Account is deactivated'}), 403
+        
+        if not user.can_upload_more:
+            return jsonify({
+                'error': f'Upload limit reached. You can upload {user.upload_limit} files with your current plan.',
+                'limit_reached': True,
+                'upload_limit': user.upload_limit,
+                'files_uploaded': user.files_uploaded_count
+            }), 403
+
+        logging.info(f"Uploading file: {file.filename} for user: {user.get_id()}")
 
         # Validate filename
         try:
@@ -506,30 +548,33 @@ def upload_file():
         file_id = str(uuid.uuid4())
         share_id = generate_share_id()
         
-        # Ensure share_id is unique (in production, use database with unique constraint)
-        while share_id in [f.get('share_id') for f in file_metadata.values()]:
+        # Ensure share_id is unique
+        while FileRecord.query.filter_by(share_id=share_id).first():
             share_id = generate_share_id()
 
         # Store file using appropriate backend
         storage_backend.store_file(file_id, file_data)
 
-        # Store metadata
-        metadata = {
-            'id': file_id,
-            'share_id': share_id,
-            'filename': file.filename,
-            'size': len(file_data),
-            'upload_date': datetime.utcnow().isoformat(),
-            'encrypted': True,
-            'mime_type': mime_type
-        }
+        # Create file record in database
+        file_record = FileRecord(
+            file_id=file_id,
+            share_id=share_id,
+            filename=file.filename,
+            size=len(file_data),
+            encrypted=True,
+            mime_type=mime_type
+        )
         
-        file_metadata[file_id] = metadata
+        # Associate with user or session
+        if hasattr(user, 'id') and user.id:  # Authenticated user
+            file_record.user_id = user.id
+        else:  # Anonymous user
+            file_record.session_id = user.session_id
         
-        # Store metadata in storage backend
-        storage_backend.store_file(f"{file_id}.meta", json.dumps(metadata).encode('utf-8'))
+        db.session.add(file_record)
+        db.session.commit()
 
-        logging.info(f"File uploaded successfully: {file_id} (share_id: {share_id})")
+        logging.info(f"File uploaded successfully: {file_id} (share_id: {share_id}) by user: {user.get_id()}")
         
         return jsonify({
             'success': True,
@@ -537,7 +582,12 @@ def upload_file():
             'share_id': share_id,
             'filename': file.filename,
             'size': len(file_data),
-            'message': 'File encrypted and uploaded successfully'
+            'message': 'File encrypted and uploaded successfully',
+            'user_info': {
+                'files_uploaded': user.files_uploaded_count + 1,
+                'upload_limit': user.upload_limit,
+                'can_upload_more': user.files_uploaded_count < user.upload_limit
+            }
         }), 201
 
     except Exception as e:
@@ -546,33 +596,38 @@ def upload_file():
 
 @app.route('/api/files', methods=['GET'])
 def list_files():
-    """List uploaded files"""
+    """List uploaded files for current user"""
     try:
-        files = []
-        for file_id, metadata in file_metadata.items():
-            # Check if file has share_id (new format) or expires_at (old format)
-            if 'share_id' in metadata:
-                # New format - include share_id
-                files.append({
-                    'id': file_id,
-                    'share_id': metadata['share_id'],
-                    'filename': metadata['filename'],
-                    'size': metadata['size'],
-                    'upload_date': metadata['upload_date'],
-                    'encrypted': metadata.get('encrypted', False)
-                })
-            elif 'expires_at' in metadata:
-                # Old format - check expiration
-                if datetime.fromisoformat(metadata['expires_at']) > datetime.utcnow():
-                    files.append({
-                        'id': file_id,
-                        'filename': metadata['filename'],
-                        'size': metadata['size'],
-                        'upload_date': metadata['upload_date'],
-                        'encrypted': metadata.get('encrypted', False)
-                    })
+        # Get current user (authenticated or anonymous)
+        user = get_current_user_or_anonymous()
         
-        return jsonify({'files': files}), 200
+        # Query files based on user type
+        if hasattr(user, 'id') and user.id:  # Authenticated user
+            files_query = FileRecord.query.filter_by(user_id=user.id)
+        else:  # Anonymous user
+            files_query = FileRecord.query.filter_by(session_id=user.session_id)
+        
+        file_records = files_query.order_by(FileRecord.upload_date.desc()).all()
+        
+        files = []
+        for record in file_records:
+            files.append({
+                'id': record.file_id,
+                'share_id': record.share_id,
+                'filename': record.filename,
+                'size': record.size,
+                'upload_date': record.upload_date.isoformat(),
+                'encrypted': record.encrypted
+            })
+        
+        return jsonify({
+            'files': files,
+            'user_info': {
+                'files_uploaded': len(files),
+                'upload_limit': user.upload_limit,
+                'can_upload_more': user.can_upload_more
+            }
+        }), 200
     except Exception as e:
         logging.error(f"List files error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
@@ -584,22 +639,25 @@ def download_file(file_id):
         # Check if file_id is a share_id (8 characters, alphanumeric)
         if len(file_id) == 8 and file_id.isalnum():
             # Search by share_id
-            file_meta = None
-            for meta in file_metadata.values():
-                if meta.get('share_id') == file_id:
-                    file_meta = meta
-                    break
-            
-            if not file_meta:
-                return jsonify({'error': 'File not found'}), 404
+            file_record = FileRecord.query.filter_by(share_id=file_id).first()
         else:
             # Search by UUID
-            file_meta = file_metadata.get(file_id)
-            if not file_meta:
-                return jsonify({'error': 'File not found'}), 404
+            file_record = FileRecord.query.filter_by(file_id=file_id).first()
+        
+        if not file_record:
+            return jsonify({'error': 'File not found'}), 404
+
+        # Check if user has permission to download this file
+        user = get_current_user_or_anonymous()
+        if hasattr(user, 'id') and user.id:  # Authenticated user
+            if file_record.user_id != user.id:
+                return jsonify({'error': 'Access denied'}), 403
+        else:  # Anonymous user
+            if file_record.session_id != user.session_id:
+                return jsonify({'error': 'Access denied'}), 403
 
         # Retrieve file from storage
-        file_data = storage_backend.retrieve_file(file_meta['id'])
+        file_data = storage_backend.retrieve_file(file_record.file_id)
         
         if not file_data:
             return jsonify({'error': 'File not found in storage'}), 404
@@ -607,7 +665,7 @@ def download_file(file_id):
         # Create response with encrypted file
         response = Response(file_data)
         response.headers['Content-Type'] = 'application/octet-stream'
-        response.headers['Content-Disposition'] = f'attachment; filename="{file_meta["filename"]}.encrypted"'
+        response.headers['Content-Disposition'] = f'attachment; filename="{file_record.filename}.encrypted"'
         response.headers['Content-Length'] = len(file_data)
         
         return response
@@ -618,24 +676,43 @@ def download_file(file_id):
 
 @app.route('/api/files/<file_id>', methods=['DELETE'])
 def delete_file(file_id):
-    """Delete file by ID"""
+    """Delete a file by ID"""
     try:
-        if file_id not in file_metadata:
+        # Find file record
+        file_record = FileRecord.query.filter_by(file_id=file_id).first()
+        if not file_record:
             return jsonify({'error': 'File not found'}), 404
+
+        # Check if user has permission to delete this file
+        user = get_current_user_or_anonymous()
+        if hasattr(user, 'id') and user.id:  # Authenticated user
+            if file_record.user_id != user.id:
+                return jsonify({'error': 'Access denied'}), 403
+        else:  # Anonymous user
+            if file_record.session_id != user.session_id:
+                return jsonify({'error': 'Access denied'}), 403
+
+        # Delete from storage
+        storage_backend.delete_file(file_record.file_id)
         
-        # Delete from storage backend
-        delete_success = storage_backend.delete_file(file_id)
-        if not delete_success:
-            logging.error(f"Storage backend failed to delete file {file_id}")
-            return jsonify({'error': 'Failed to delete file from storage'}), 500
+        # Delete from database
+        db.session.delete(file_record)
+        db.session.commit()
+
+        logging.info(f"File deleted: {file_id} by user: {user.get_id()}")
         
-        # Remove metadata
-        del file_metadata[file_id]
-        
-        return jsonify({'message': 'File deleted successfully'}), 200
-        
+        return jsonify({
+            'success': True,
+            'message': 'File deleted successfully',
+            'user_info': {
+                'files_uploaded': user.files_uploaded_count,
+                'upload_limit': user.upload_limit,
+                'can_upload_more': user.can_upload_more
+            }
+        }), 200
+
     except Exception as e:
-        logging.error(f"Delete error for file {file_id}: {e}")
+        logging.error(f"Delete error: {str(e)}")
         return jsonify({'error': f'Delete failed: {str(e)}'}), 500
 
 @app.route('/api/health', methods=['GET'])
@@ -657,22 +734,18 @@ def search_file(share_id):
             return jsonify({'error': 'Invalid share ID format'}), 400
 
         # Search for file with matching share_id
-        file_meta = None
-        for meta in file_metadata.values():
-            if meta.get('share_id') == share_id:
-                file_meta = meta
-                break
+        file_record = FileRecord.query.filter_by(share_id=share_id).first()
 
-        if not file_meta:
+        if not file_record:
             return jsonify({'error': 'File not found'}), 404
 
         # Return file metadata (without sensitive information)
         return jsonify({
             'found': True,
-            'filename': file_meta['filename'],
-            'size': file_meta['size'],
-            'upload_date': file_meta['upload_date'],
-            'share_id': file_meta['share_id']
+            'filename': file_record.filename,
+            'size': file_record.size,
+            'upload_date': file_record.upload_date.isoformat(),
+            'share_id': file_record.share_id
         }), 200
 
     except Exception as e:

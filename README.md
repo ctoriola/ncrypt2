@@ -1,51 +1,60 @@
 # NCryp - Secure Encrypted File Transfer
 
-NCryp is a secure client-side encrypted file transfer application that allows users to upload files with end-to-end encryption and share them with others using unique share IDs.
+NCryp is a secure client-side encrypted file storage and transfer system with a modern React frontend and Flask backend. It features user authentication, tiered subscriptions, and supports multiple cloud storage backends.
 
-## Features
+## 🌟 Features
 
-### 🔐 **Client-Side Encryption**
-- Files are encrypted in your browser before upload using AES-GCM
-- Your data never leaves your device unencrypted
-- Uses Web Crypto API for secure encryption
+### 🔐 Security
+- **Client-side encryption** using AES-GCM before upload
+- **Zero-knowledge storage** - files are encrypted before reaching the server
+- **Malware scanning** with ClamAV integration
+- **Secure file validation** and MIME type checking
 
-### 📤 **Easy File Sharing**
-- Upload files and get a unique 8-character share ID
-- Share the ID with anyone to let them download your encrypted file
-- No accounts or registration required
+### 👥 User Management
+- **User authentication** with registration and login
+- **Tiered subscription system** with different upload limits
+- **Anonymous usage** with limited uploads (2 files per session)
+- **Session management** with secure cookies
 
-### 🔍 **Simple File Discovery**
-- Search for files using share IDs
-- Download encrypted files shared with you
-- Clean, intuitive interface
+### 📁 File Management
+- **Drag-and-drop upload** with progress tracking
+- **Shareable file IDs** for easy file sharing
+- **File search** by share ID
+- **File listing** with download and delete options
+- **Client-side decryption** for secure file access
 
-### 🛡️ **Security Features**
-- Malware scanning with ClamAV (optional)
-- File type validation
-- Size limits and security checks
-- Multiple storage backend support
+### ☁️ Storage Options
+- **Local filesystem** storage (default)
+- **AWS S3** integration
+- **Google Cloud Storage** integration
+- **Azure Blob Storage** integration
 
-### 📱 **Modern UI**
-- Responsive design for all devices
-- Dark mode support
-- Drag-and-drop file upload
-- Progress tracking
+### 🎨 User Interface
+- **Modern React UI** with dark/light mode
+- **Responsive design** for mobile and desktop
+- **Real-time progress** indicators
+- **Toast notifications** for user feedback
 
-## How It Works
+## 📊 Subscription Tiers
 
-1. **Upload**: Drag and drop a file, enter a passphrase, and get a share ID
-2. **Share**: Send the share ID to anyone you want to share the file with
-3. **Download**: Recipients enter the share ID to download the encrypted file
-4. **Decrypt**: Use the original passphrase to decrypt the file
+| Tier | Upload Limit | Price | Features |
+|------|-------------|-------|----------|
+| **Free** | 2 files | $0/month | Basic encryption, file sharing |
+| **Basic** | 10 files | $5/month | Advanced encryption, priority support |
+| **Pro** | 100 files | $15/month | Enterprise encryption, 24/7 support |
+| **Enterprise** | 1000 files | $50/month | Custom limits, dedicated support |
 
-## Quick Start
+**Anonymous users** can upload 2 files per session without registration.
+
+## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.8+
 - Node.js 16+
-- npm or yarn
+- SQLite (included) or PostgreSQL/MySQL
+- ClamAV (optional, for malware scanning)
 
-### Installation
+### Backend Setup
 
 1. **Clone the repository**
    ```bash
@@ -53,208 +62,248 @@ NCryp is a secure client-side encrypted file transfer application that allows us
    cd NCryp
    ```
 
-2. **Install backend dependencies**
+2. **Install Python dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **Install frontend dependencies**
-   ```bash
-   cd frontend
-   npm install
-   cd ..
-   ```
-
-4. **Configure environment**
+3. **Set up environment variables**
    ```bash
    cp env.example env.local
    # Edit env.local with your configuration
    ```
 
-5. **Start the application**
+4. **Initialize the database**
    ```bash
-   # Windows
-   start.bat
-   
-   # Linux/Mac
-   ./start.sh
+   python -c "from server import app, db; app.app_context().push(); db.create_all()"
    ```
 
-   Or run manually:
+5. **Run the backend**
    ```bash
-   # Terminal 1 - Backend
    python server.py
-   
-   # Terminal 2 - Frontend
+   ```
+
+### Frontend Setup
+
+1. **Navigate to frontend directory**
+   ```bash
    cd frontend
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables**
+   ```bash
+   # Create .env file
+   echo "VITE_API_URL=http://localhost:5000" > .env
+   ```
+
+4. **Run the development server**
+   ```bash
    npm run dev
    ```
 
-6. **Open your browser**
-   Navigate to `http://localhost:5173`
-
-## Configuration
+## 🔧 Configuration
 
 ### Environment Variables
 
-Create an `env.local` file with the following variables:
+#### Required
+- `SECRET_KEY`: Flask secret key for sessions
+- `DATABASE_URL`: Database connection string
+- `STORAGE_BACKEND`: Storage backend type (local, s3, gcs, azure)
 
+#### Optional
+- `MAX_FILE_SIZE`: Maximum file size in bytes (default: 100MB)
+- `CLAMAV_HOST`: ClamAV host for malware scanning
+- `CORS_ORIGINS`: Allowed CORS origins
+
+### Database Setup
+
+The application uses SQLAlchemy with support for:
+- **SQLite** (default, good for development)
+- **PostgreSQL** (recommended for production)
+- **MySQL** (alternative for production)
+
+### Storage Backend Configuration
+
+#### Local Storage (Default)
 ```bash
-# Flask Configuration
-FLASK_ENV=development
-FLASK_DEBUG=true
-SECRET_KEY=your-secret-key-here
+STORAGE_BACKEND=local
+LOCAL_STORAGE_PATH=uploads
+```
 
-# File Upload Settings
-MAX_FILE_SIZE=104857600  # 100MB in bytes
-ALLOWED_EXTENSIONS=pdf,txt,jpg,jpeg,png,gif,doc,docx,xls,xlsx,csv,zip,rar
-
-# Storage Configuration
-STORAGE_TYPE=local  # local, s3, gcs, azure
-
-# Local Storage
-LOCAL_STORAGE_PATH=./uploads
-
-# AWS S3 (optional)
+#### AWS S3
+```bash
+STORAGE_BACKEND=s3
 AWS_ACCESS_KEY_ID=your-access-key
 AWS_SECRET_ACCESS_KEY=your-secret-key
 AWS_REGION=us-east-1
-S3_BUCKET_NAME=your-bucket-name
-
-# Google Cloud Storage (optional)
-GCS_BUCKET_NAME=your-bucket-name
-
-# Azure Blob Storage (optional)
-AZURE_CONNECTION_STRING=your-connection-string
-AZURE_CONTAINER_NAME=your-container-name
-
-# ClamAV (optional)
-CLAMAV_ENABLED=false
+S3_BUCKET_NAME=your-bucket
 ```
 
-### Storage Backends
+#### Google Cloud Storage
+```bash
+STORAGE_BACKEND=gcs
+GOOGLE_CLOUD_PROJECT=your-project
+GOOGLE_CLOUD_BUCKET=your-bucket
+GOOGLE_APPLICATION_CREDENTIALS=path/to/key.json
+```
 
-NCryp supports multiple storage backends:
+#### Azure Blob Storage
+```bash
+STORAGE_BACKEND=azure
+AZURE_STORAGE_ACCOUNT=your-account
+AZURE_STORAGE_KEY=your-key
+AZURE_CONTAINER_NAME=your-container
+```
 
-- **Local Storage** (default): Files stored on local filesystem
-- **AWS S3**: Cloud storage with Amazon S3
-- **Google Cloud Storage**: Cloud storage with Google Cloud
-- **Azure Blob Storage**: Cloud storage with Microsoft Azure
+## 📖 API Documentation
 
-See [STORAGE_SETUP.md](STORAGE_SETUP.md) for detailed setup instructions.
+### Authentication Endpoints
 
-## Usage
+#### Register User
+```http
+POST /api/auth/register
+Content-Type: application/json
 
-### Uploading and Sharing Files
+{
+  "username": "user123",
+  "email": "user@example.com",
+  "password": "securepassword"
+}
+```
 
-1. Go to the "Upload & Share" tab
-2. Drag and drop a file or click to select
-3. Enter a secure passphrase (minimum 8 characters)
-4. Wait for encryption and upload to complete
-5. Copy the generated share ID
-6. Share the ID with others via email, messaging, etc.
+#### Login User
+```http
+POST /api/auth/login
+Content-Type: application/json
 
-### Downloading Shared Files
+{
+  "username": "user123",
+  "password": "securepassword"
+}
+```
 
-1. Go to the "Download Shared" tab
-2. Enter the 8-character share ID
-3. Click "Search" to find the file
-4. Click "Download Encrypted File" to download
-5. Go to the "Decrypt Files" tab to decrypt with the original passphrase
+#### Get Current User
+```http
+GET /api/auth/me
+```
 
-### Decrypting Files
+#### Logout
+```http
+POST /api/auth/logout
+```
 
-1. Go to the "Decrypt Files" tab
-2. Select the encrypted file
-3. Enter the original passphrase
-4. Click "Decrypt" to download the original file
+### File Management Endpoints
 
-## Security
+#### Upload File
+```http
+POST /api/upload
+Content-Type: multipart/form-data
 
-### Encryption Details
-- **Algorithm**: AES-GCM (Galois/Counter Mode)
-- **Key Derivation**: PBKDF2 with 100,000 iterations
-- **Key Size**: 256 bits
-- **Salt**: 16 bytes (random)
-- **IV**: 12 bytes (random)
+file: [encrypted file data]
+```
 
-### Security Features
-- Client-side encryption (files encrypted before upload)
-- Secure key derivation from passphrase
-- File type validation
-- Malware scanning (optional)
-- No server-side access to unencrypted files
+#### List Files
+```http
+GET /api/files
+```
 
-## API Endpoints
+#### Download File
+```http
+GET /api/files/{file_id}
+# or
+GET /api/files/{share_id}
+```
 
-### File Management
-- `POST /api/upload` - Upload encrypted file
-- `GET /api/files` - List user's files
-- `GET /api/files/<file_id>` - Download file by ID or share ID
-- `DELETE /api/files/<file_id>` - Delete file
+#### Delete File
+```http
+DELETE /api/files/{file_id}
+```
 
-### File Sharing
-- `GET /api/search/<share_id>` - Search for file by share ID
+#### Search File
+```http
+GET /api/search/{share_id}
+```
 
-## Development
+## 🛠️ Development
 
 ### Project Structure
 ```
 NCryp/
-├── server.py              # Flask backend
+├── server.py              # Main Flask application
+├── models.py              # Database models
+├── auth.py                # Authentication routes
 ├── requirements.txt       # Python dependencies
-├── env.example           # Environment template
+├── env.example           # Environment variables template
 ├── frontend/             # React frontend
 │   ├── src/
 │   │   ├── components/   # React components
-│   │   ├── App.jsx       # Main app component
-│   │   └── main.jsx      # App entry point
-│   ├── package.json      # Node dependencies
+│   │   ├── workers/      # Web Workers
+│   │   └── App.jsx       # Main app component
+│   ├── package.json      # Node.js dependencies
 │   └── vite.config.js    # Vite configuration
-└── uploads/              # Local file storage
+└── uploads/              # File storage (local backend)
 ```
 
-### Running in Development
+### Database Models
 
+#### User
+- `id`: Primary key
+- `username`: Unique username
+- `email`: Unique email address
+- `password_hash`: Bcrypt hashed password
+- `subscription_tier`: Subscription level (free, basic, pro, enterprise)
+- `subscription_expires`: Subscription expiration date
+- `created_at`: Account creation timestamp
+
+#### FileRecord
+- `id`: Primary key
+- `file_id`: Unique file UUID
+- `share_id`: 8-character shareable ID
+- `filename`: Original filename
+- `size`: File size in bytes
+- `user_id`: Associated user (null for anonymous)
+- `session_id`: Session ID for anonymous users
+- `upload_date`: Upload timestamp
+
+### Security Features
+
+1. **Client-side Encryption**: Files are encrypted using AES-GCM before upload
+2. **Password Hashing**: User passwords are hashed with Bcrypt
+3. **Session Management**: Secure session cookies with CSRF protection
+4. **File Validation**: MIME type and size validation
+5. **Malware Scanning**: Optional ClamAV integration
+6. **Rate Limiting**: Upload limits based on subscription tier
+
+## 🚀 Deployment
+
+### Railway Deployment
+The application is configured for Railway deployment with:
+- Automatic database setup
+- Environment variable configuration
+- Build and deployment scripts
+
+### Docker Deployment
 ```bash
-# Backend (Flask)
-python server.py
-
-# Frontend (React + Vite)
-cd frontend
-npm run dev
-```
-
-### Building for Production
-
-```bash
-# Build frontend
-cd frontend
-npm run build
-
-# Serve with Flask
-python server.py
-```
-
-## Deployment
-
-### Railway
-1. Connect your GitHub repository to Railway
-2. Set environment variables in Railway dashboard
-3. Deploy automatically on push
-
-### Heroku
-1. Create a Heroku app
-2. Set environment variables
-3. Deploy using Git
-
-### Docker
-```bash
+# Build the image
 docker build -t ncryp .
-docker run -p 5000:5000 ncryp
+
+# Run the container
+docker run -p 5000:5000 -e DATABASE_URL=sqlite:///ncryp.db ncryp
 ```
 
-## Contributing
+### Production Considerations
+1. **Use HTTPS**: Set `SESSION_COOKIE_SECURE=True`
+2. **Database**: Use PostgreSQL or MySQL for production
+3. **Storage**: Use cloud storage (S3, GCS, Azure) for scalability
+4. **Monitoring**: Set up logging and monitoring
+5. **Backup**: Regular database and file backups
+
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -262,21 +311,28 @@ docker run -p 5000:5000 ncryp
 4. Add tests if applicable
 5. Submit a pull request
 
-## License
+## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Support
+## 🆘 Support
 
 For support and questions:
 - Create an issue on GitHub
 - Check the documentation
 - Review the configuration examples
 
-## Security Considerations
+## 🔄 Changelog
 
-- Always use strong, unique passphrases
-- Share passphrases securely (not through the same channel as share IDs)
-- Regularly rotate passphrases for sensitive files
-- Consider the security implications of your chosen storage backend
-- Keep the application and dependencies updated 
+### v2.0.0 - Tiered Subscription System
+- Added user authentication and registration
+- Implemented tiered subscription system
+- Added anonymous user support with 2-file limit
+- Enhanced UI with user profile and subscription management
+- Improved file tracking and user association
+
+### v1.0.0 - Initial Release
+- Client-side encryption
+- File upload and sharing
+- Multiple storage backends
+- Modern React UI 

@@ -1,5 +1,5 @@
 .header {
-  background-color: var(--surface-color);
+  background: var(--header-bg);
   border-bottom: 1px solid var(--border-color);
   padding: 1rem 0;
   position: sticky;
@@ -12,33 +12,25 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 2rem;
 }
 
 .logo {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  text-decoration: none;
   color: var(--text-primary);
+  text-decoration: none;
 }
 
-.logo-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
-  border-radius: 0.75rem;
-  color: white;
+.logo svg {
+  color: var(--primary-color);
 }
 
 .logo h1 {
+  margin: 0;
   font-size: 1.5rem;
   font-weight: 700;
-  margin: 0;
-  background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -84,24 +76,119 @@
   gap: 1rem;
 }
 
+.auth-section {
+  display: flex;
+  align-items: center;
+}
+
+.auth-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.auth-btn:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.user-menu {
+  position: relative;
+}
+
+.user-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--surface-color);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 120px;
+}
+
+.user-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--primary-color);
+}
+
+.username {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 80px;
+}
+
+.upload-count {
+  background: var(--primary-color);
+  color: white;
+  padding: 0.125rem 0.375rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: fit-content;
+}
+
 .theme-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  background-color: var(--surface-color);
+  width: 40px;
+  height: 40px;
+  background: var(--surface-color);
+  color: var(--text-primary);
   border: 1px solid var(--border-color);
-  border-radius: 0.5rem;
-  color: var(--text-secondary);
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .theme-toggle:hover {
-  background-color: var(--border-color);
-  color: var(--text-primary);
+  background: var(--surface-hover);
+  border-color: var(--primary-color);
   transform: translateY(-1px);
+}
+
+/* Dark mode adjustments */
+.dark-mode .header {
+  background: var(--header-bg-dark);
+  border-color: var(--border-color-dark);
+}
+
+.dark-mode .user-btn {
+  background: var(--surface-color-dark);
+  border-color: var(--border-color-dark);
+}
+
+.dark-mode .user-btn:hover {
+  background: var(--surface-hover-dark);
+  border-color: var(--primary-color);
+}
+
+.dark-mode .theme-toggle {
+  background: var(--surface-color-dark);
+  border-color: var(--border-color-dark);
+}
+
+.dark-mode .theme-toggle:hover {
+  background: var(--surface-hover-dark);
+  border-color: var(--primary-color);
 }
 
 /* Responsive design */
@@ -111,33 +198,21 @@
     gap: 1rem;
   }
   
-  .nav {
-    order: 3;
-    width: 100%;
-  }
-  
-  .nav-list {
-    gap: 1rem;
-    justify-content: center;
-  }
-  
-  .nav-link {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-  }
-  
   .header-actions {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
+    width: 100%;
+    justify-content: space-between;
   }
   
   .logo h1 {
     font-size: 1.25rem;
   }
   
-  .tagline {
-    display: none;
+  .user-btn {
+    min-width: 100px;
+  }
+  
+  .username {
+    max-width: 60px;
   }
 }
 
@@ -146,12 +221,22 @@
     padding: 0.75rem 0;
   }
   
-  .nav-list {
+  .header-actions {
     gap: 0.5rem;
   }
   
-  .nav-link {
-    padding: 0.5rem;
+  .auth-btn,
+  .user-btn {
+    padding: 0.5rem 0.75rem;
     font-size: 0.8rem;
+  }
+  
+  .username {
+    display: none;
+  }
+  
+  .upload-count {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.25rem;
   }
 } 

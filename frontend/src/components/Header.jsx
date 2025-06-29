@@ -1,7 +1,7 @@
 import React from 'react';
 import './Header.css';
 
-export function Header({ darkMode, onToggleDarkMode }) {
+export function Header({ darkMode, onToggleDarkMode, user, onShowAuth, onShowProfile }) {
   return (
     <header className="header">
       <div className="container">
@@ -26,7 +26,44 @@ export function Header({ darkMode, onToggleDarkMode }) {
           </nav>
 
           <div className="header-actions">
-            <button
+            {/* User Authentication */}
+            <div className="auth-section">
+              {user ? (
+                <div className="user-menu">
+                  <button 
+                    className="user-btn"
+                    onClick={onShowProfile}
+                    title="Account"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    <span className="username">{user.username || 'User'}</span>
+                    {!user.is_anonymous && (
+                      <span className="upload-count">
+                        {user.files_uploaded_count}/{user.upload_limit}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  className="auth-btn"
+                  onClick={onShowAuth}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                    <polyline points="10,17 15,12 10,7"></polyline>
+                    <line x1="15" y1="12" x2="3" y2="12"></line>
+                  </svg>
+                  Sign In
+                </button>
+              )}
+            </div>
+
+            {/* Dark Mode Toggle */}
+            <button 
               className="theme-toggle"
               onClick={onToggleDarkMode}
               title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
