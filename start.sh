@@ -9,6 +9,16 @@ ls -la
 echo "Python version:"
 python --version
 
+# Create virtual environment if it doesn't exist
+if [ ! -d "venv" ]; then
+    echo "Creating virtual environment..."
+    python -m venv venv
+fi
+
+# Activate virtual environment
+echo "Activating virtual environment..."
+source venv/bin/activate
+
 # Debug: Show pip list
 echo "Installed packages:"
 pip list
