@@ -62,9 +62,31 @@ FILE_EXTENSIONS = {
 # Storage Configuration
 STORAGE_TYPE = os.getenv('STORAGE_TYPE', 'local').lower()  # local, s3, gcs, azure
 
-# Local Storage Configuration
-LOCAL_STORAGE_PATH = os.getenv('LOCAL_STORAGE_PATH', './uploads')
-os.makedirs(LOCAL_STORAGE_PATH, exist_ok=True)
+# Local Storage Configuration - Use absolute path for Railway compatibility
+if STORAGE_TYPE == 'local':
+    # Use /tmp for Railway or absolute path for better compatibility
+    LOCAL_STORAGE_PATH = os.getenv('LOCAL_STORAGE_PATH', '/tmp/ncryp-uploads')
+    if LOCAL_STORAGE_PATH.startswith('./'):
+        # Convert relative path to absolute path
+        LOCAL_STORAGE_PATH = os.path.abspath(LOCAL_STORAGE_PATH)
+    
+    # Ensure the directory exists and is writable
+    try:
+        os.makedirs(LOCAL_STORAGE_PATH, exist_ok=True)
+        # Test write permissions
+        test_file = os.path.join(LOCAL_STORAGE_PATH, 'test_write.tmp')
+        with open(test_file, 'w') as f:
+            f.write('test')
+        os.remove(test_file)
+        logging.info(f"Local storage initialized at: {LOCAL_STORAGE_PATH}")
+    except Exception as e:
+        logging.error(f"Failed to initialize local storage at {LOCAL_STORAGE_PATH}: {e}")
+        # Fallback to /tmp if the configured path fails
+        LOCAL_STORAGE_PATH = '/tmp/ncryp-uploads'
+        os.makedirs(LOCAL_STORAGE_PATH, exist_ok=True)
+        logging.info(f"Using fallback storage path: {LOCAL_STORAGE_PATH}")
+else:
+    LOCAL_STORAGE_PATH = './uploads'  # Default for non-local storage
 
 # AWS S3 Configuration (optional)
 if STORAGE_TYPE == 's3':
@@ -161,17 +183,28 @@ class LocalStorageBackend(StorageBackend):
         self.storage_path.mkdir(parents=True, exist_ok=True)
     
     def store_file(self, file_id, file_data, metadata=None):
-        file_path = self.storage_path / f"{file_id}.bin"
-        with open(file_path, 'wb') as f:
-            f.write(file_data)
-        
-        # Store metadata in a separate file
-        if metadata:
-            meta_path = self.storage_path / f"{file_id}.meta"
-            with open(meta_path, 'w') as f:
-                json.dump(metadata, f)
-        
-        return True
+        try:
+            file_path = self.storage_path / f"{file_id}.bin"
+            logging.info(f"Storing file {file_id} at: {file_path}")
+            
+            with open(file_path, 'wb') as f:
+                f.write(file_data)
+            
+            # Store metadata in a separate file
+            if metadata:
+                meta_path = self.storage_path / f"{file_id}.meta"
+                logging.info(f"Storing metadata for {file_id} at: {meta_path}")
+                with open(meta_path, 'w') as f:
+                    json.dump(metadata, f)
+            
+            logging.info(f"Successfully stored file {file_id}")
+            return True
+        except Exception as e:
+            logging.error(f"Failed to store file {file_id}: {e}")
+            logging.error(f"Storage path: {self.storage_path}")
+            logging.error(f"Storage path exists: {self.storage_path.exists()}")
+            logging.error(f"Storage path is writable: {os.access(self.storage_path, os.W_OK)}")
+            return False
     
     def retrieve_file(self, file_id):
         file_path = self.storage_path / f"{file_id}.bin"
@@ -325,17 +358,24 @@ class AzureStorageBackend(StorageBackend):
 
 # Initialize storage backend
 if STORAGE_TYPE == 'local':
+    logging.info(f"Initializing local storage backend at: {LOCAL_STORAGE_PATH}")
     storage_backend = LocalStorageBackend(LOCAL_STORAGE_PATH)
 elif STORAGE_TYPE == 's3' and s3_client:
+    logging.info(f"Initializing S3 storage backend with bucket: {SECURE_BUCKET}")
     storage_backend = S3StorageBackend(s3_client, SECURE_BUCKET)
 elif STORAGE_TYPE == 'gcs' and gcs_bucket:
+    logging.info(f"Initializing GCS storage backend with bucket: {GCS_BUCKET_NAME}")
     storage_backend = GCSStorageBackend(gcs_bucket)
 elif STORAGE_TYPE == 'azure' and azure_container:
+    logging.info(f"Initializing Azure storage backend with container: {azure_container_name}")
     storage_backend = AzureStorageBackend(azure_container)
 else:
     # Fallback to local storage
     logging.warning(f"Storage type '{STORAGE_TYPE}' not available, falling back to local storage")
+    logging.info(f"Using fallback local storage at: {LOCAL_STORAGE_PATH}")
     storage_backend = LocalStorageBackend(LOCAL_STORAGE_PATH)
+
+logging.info(f"Storage backend initialized successfully: {type(storage_backend).__name__}")
 
 def validate_filename(filename):
     """Validate filename for security"""
