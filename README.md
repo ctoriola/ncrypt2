@@ -5,7 +5,7 @@ A modern, **zero-knowledge** file storage solution with client-side encryption. 
 ## ✨ Live Demo
 
 **🚀 Deployed and Ready to Use:**
-- [Netlify](https://ncryp.netlify.app)
+- [Netlify](https://ncrypt.netlify.app)
 
 ### 🛡️ **Enterprise-Grade Security**
 - **AES-256-GCM encryption** - Military-grade encryption standard
