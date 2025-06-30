@@ -17,6 +17,32 @@ from functools import wraps
 import hashlib
 import hmac
 
+# Firebase Admin SDK
+try:
+    import firebase_admin
+    from firebase_admin import credentials, auth
+    FIREBASE_AVAILABLE = True
+    
+    # Initialize Firebase Admin SDK
+    firebase_credentials_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
+    if firebase_credentials_path and os.path.exists(firebase_credentials_path):
+        cred = credentials.Certificate(firebase_credentials_path)
+        firebase_admin.initialize_app(cred)
+        logging.info("Firebase Admin SDK initialized with service account")
+    else:
+        # Try to initialize with default credentials (for Railway/Heroku)
+        try:
+            firebase_admin.initialize_app()
+            logging.info("Firebase Admin SDK initialized with default credentials")
+        except Exception as e:
+            logging.warning(f"Firebase Admin SDK initialization failed: {e}")
+            FIREBASE_AVAILABLE = False
+except ImportError:
+    firebase_admin = None
+    auth = None
+    FIREBASE_AVAILABLE = False
+    logging.warning("Firebase Admin SDK not available - Firebase authentication disabled")
+
 # Optional ClamAV import
 try:
     import clamd
@@ -538,6 +564,46 @@ def require_admin(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def require_firebase_admin(f):
+    """Decorator to require Firebase admin authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        logging.info(f"Firebase admin endpoint accessed: {request.endpoint}")
+        
+        # Get Authorization header
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            logging.warning(f"Missing or invalid Authorization header for {request.remote_addr}")
+            return jsonify({'error': 'Firebase authentication required'}), 401
+        
+        id_token = auth_header.split('Bearer ')[1]
+        
+        try:
+            if not FIREBASE_AVAILABLE or not auth:
+                logging.error("Firebase Admin SDK not available")
+                return jsonify({'error': 'Firebase authentication not configured'}), 500
+            
+            # Verify the Firebase ID token
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+            email = decoded_token.get('email', '')
+            
+            logging.info(f"Firebase authentication successful for user: {email} ({user_id})")
+            
+            # Store user info in request context for use in the endpoint
+            request.firebase_user = {
+                'uid': user_id,
+                'email': email
+            }
+            
+            return f(*args, **kwargs)
+            
+        except Exception as e:
+            logging.error(f"Firebase authentication failed: {str(e)}")
+            return jsonify({'error': 'Invalid Firebase token'}), 401
+    
+    return decorated_function
+
 def update_upload_stats(file_size):
     """Update upload statistics"""
     try:
@@ -861,12 +927,12 @@ def admin_logout():
         return jsonify({'error': f'Logout failed: {str(e)}'}), 500
 
 @app.route('/api/admin/stats', methods=['GET'])
-@require_admin
+@require_firebase_admin
 def get_admin_stats():
     """Admin stats endpoint"""
     try:
         logging.info(f"Admin stats request from {request.remote_addr}")
-        logging.info(f"Session data: {dict(session)}")
+        logging.info(f"Firebase user: {getattr(request, 'firebase_user', 'Not set')}")
         
         stats_data = {
             'total_visits': visitor_stats['total_visits'],
@@ -884,12 +950,12 @@ def get_admin_stats():
         return jsonify({'error': f'Stats failed: {str(e)}'}), 500
 
 @app.route('/api/admin/files', methods=['GET'])
-@require_admin
+@require_firebase_admin
 def get_admin_files():
     """Admin endpoint to get all files with metadata"""
     try:
         logging.info(f"Admin files request from {request.remote_addr}")
-        logging.info(f"Session data: {dict(session)}")
+        logging.info(f"Firebase user: {getattr(request, 'firebase_user', 'Not set')}")
         
         files = []
         for file_id, metadata in file_metadata.items():

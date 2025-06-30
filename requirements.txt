@@ -13,4 +13,8 @@ google-cloud-storage==2.10.0
 azure-storage-blob==12.19.0
 
 # ClamAV (optional - install separately if needed)
-# python-clamd==0.4.0 
+# python-clamd==0.4.0
+
+python-magic==0.4.27
+clamd==1.0.2
+firebase-admin==6.2.0 

@@ -7,6 +7,7 @@ import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { AdminLogin } from './components/AdminLogin';
 import { AdminDashboard } from './components/AdminDashboard';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
@@ -16,12 +17,12 @@ const API_BASE_URL = import.meta.env.VITE_API_URL
   ? (import.meta.env.VITE_API_URL.startsWith('http') ? import.meta.env.VITE_API_URL : `https://${import.meta.env.VITE_API_URL}`)
   : 'https://web-production-5d61.up.railway.app';
 
-function App() {
+function AppContent() {
   const [darkMode, setDarkMode] = useState(false);
   const [activeTab, setActiveTab] = useState('upload'); // 'upload', 'decrypt', 'search', or 'admin'
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const { currentUser } = useAuth();
 
   useEffect(() => {
     // Check for saved dark mode preference
@@ -82,12 +83,10 @@ function App() {
   };
 
   const handleAdminLoginSuccess = () => {
-    setIsAdminLoggedIn(true);
     setActiveTab('admin');
   };
 
   const handleAdminLogout = () => {
-    setIsAdminLoggedIn(false);
     setActiveTab('upload');
   };
 
@@ -181,7 +180,7 @@ function App() {
 
           {activeTab === 'admin' && (
             <section className="admin-section">
-              {isAdminLoggedIn ? (
+              {currentUser ? (
                 <AdminDashboard onLogout={handleAdminLogout} />
               ) : (
                 <AdminLogin onLoginSuccess={handleAdminLoginSuccess} />
@@ -206,6 +205,14 @@ function App() {
         theme={darkMode ? 'dark' : 'light'}
       />
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

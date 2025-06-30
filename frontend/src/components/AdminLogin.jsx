@@ -1,60 +1,56 @@
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
+import { useAuth } from '../contexts/AuthContext';
 import './AdminLogin.css';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL 
-  ? (import.meta.env.VITE_API_URL.startsWith('http') ? import.meta.env.VITE_API_URL : `https://${import.meta.env.VITE_API_URL}`)
-  : 'https://web-production-5d61.up.railway.app';
-
 export const AdminLogin = ({ onLoginSuccess }) => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!username || !password) {
-      toast.error('Please enter both username and password');
+    if (!email || !password) {
+      toast.error('Please enter both email and password');
       return;
     }
 
     setLoading(true);
     
     try {
-      console.log('Attempting admin login...');
-      const response = await fetch(`${API_BASE_URL}/api/admin/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ username, password }),
-      });
-
-      console.log('Login response status:', response.status);
-      console.log('Login response headers:', response.headers);
+      console.log('Attempting Firebase admin login...');
+      await login(email, password);
       
-      const data = await response.json();
-      console.log('Login response data:', data);
-
-      if (response.ok) {
-        console.log('Login successful, checking session...');
-        // Test session immediately after login
-        const sessionTest = await fetch(`${API_BASE_URL}/api/admin/test-session`, {
-          credentials: 'include'
-        });
-        const sessionData = await sessionTest.json();
-        console.log('Session test after login:', sessionData);
-        
-        toast.success('Admin login successful!');
-        onLoginSuccess();
-      } else {
-        toast.error(data.error || 'Login failed');
-      }
+      console.log('Firebase login successful');
+      toast.success('Admin login successful!');
+      onLoginSuccess();
     } catch (error) {
-      console.error('Login error:', error);
-      toast.error('Network error during login');
+      console.error('Firebase login error:', error);
+      
+      let errorMessage = 'Login failed';
+      switch (error.code) {
+        case 'auth/user-not-found':
+          errorMessage = 'No admin account found with this email';
+          break;
+        case 'auth/wrong-password':
+          errorMessage = 'Incorrect password';
+          break;
+        case 'auth/invalid-email':
+          errorMessage = 'Invalid email address';
+          break;
+        case 'auth/too-many-requests':
+          errorMessage = 'Too many failed attempts. Please try again later';
+          break;
+        case 'auth/network-request-failed':
+          errorMessage = 'Network error. Please check your connection';
+          break;
+        default:
+          errorMessage = error.message || 'Login failed';
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -70,18 +66,18 @@ export const AdminLogin = ({ onLoginSuccess }) => {
             <path d="M2 12l10 5 10-5"></path>
           </svg>
           <h2>Admin Dashboard</h2>
-          <p>Enter your credentials to access the admin panel</p>
+          <p>Enter your Firebase credentials to access the admin panel</p>
         </div>
 
         <form onSubmit={handleSubmit} className="admin-login-form">
           <div className="form-group">
-            <label htmlFor="username">Username</label>
+            <label htmlFor="email">Email</label>
             <input
-              type="text"
-              id="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter admin username"
+              type="email"
+              id="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter admin email"
               required
             />
           </div>
@@ -111,6 +107,13 @@ export const AdminLogin = ({ onLoginSuccess }) => {
             )}
           </button>
         </form>
+
+        <div className="admin-login-info">
+          <p>
+            <strong>Note:</strong> This admin panel uses Firebase Authentication. 
+            Make sure you have created an admin user in your Firebase project.
+          </p>
+        </div>
       </div>
     </div>
   );

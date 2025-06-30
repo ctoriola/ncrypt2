@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import { useAuth } from '../contexts/AuthContext';
 import './AdminDashboard.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL 
@@ -11,30 +12,36 @@ export const AdminDashboard = ({ onLogout }) => {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const { currentUser, logout } = useAuth();
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    if (currentUser) {
+      loadDashboardData();
+    }
+  }, [currentUser]);
 
   const loadDashboardData = async () => {
     try {
       setLoading(true);
       
-      // Test session first
-      console.log('Testing session...');
-      const sessionTest = await fetch(`${API_BASE_URL}/api/admin/test-session`, {
-        credentials: 'include'
-      });
-      const sessionData = await sessionTest.json();
-      console.log('Session test result:', sessionData);
+      // Get Firebase ID token for authentication
+      const idToken = await currentUser.getIdToken();
+      
+      console.log('Loading dashboard data with Firebase token...');
       
       // Load stats and files in parallel
       const [statsResponse, filesResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/admin/stats`, {
-          credentials: 'include'
+          headers: {
+            'Authorization': `Bearer ${idToken}`,
+            'Content-Type': 'application/json'
+          }
         }),
         fetch(`${API_BASE_URL}/api/admin/files`, {
-          credentials: 'include'
+          headers: {
+            'Authorization': `Bearer ${idToken}`,
+            'Content-Type': 'application/json'
+          }
         })
       ]);
 
@@ -68,17 +75,9 @@ export const AdminDashboard = ({ onLogout }) => {
 
   const handleLogout = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/logout`, {
-        method: 'POST',
-        credentials: 'include'
-      });
-
-      if (response.ok) {
-        toast.success('Logged out successfully');
-        onLogout();
-      } else {
-        toast.error('Logout failed');
-      }
+      await logout();
+      toast.success('Logged out successfully');
+      onLogout();
     } catch (error) {
       console.error('Logout error:', error);
       toast.error('Logout failed');
@@ -122,6 +121,11 @@ export const AdminDashboard = ({ onLogout }) => {
         <div className="admin-header-left">
           <h1>Admin Dashboard</h1>
           <p>Monitor your NCryp application</p>
+          {currentUser && (
+            <p className="admin-user-info">
+              Logged in as: {currentUser.email}
+            </p>
+          )}
         </div>
         <button onClick={handleLogout} className="logout-btn">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

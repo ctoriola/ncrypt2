@@ -34,13 +34,34 @@ NCryp is a secure client-side encrypted file transfer application that allows us
 - Monitor visitor statistics and analytics
 - Track file uploads and downloads
 - View all stored files and metadata
-- Secure admin authentication
+- **Firebase Authentication** for secure admin access
+- Real-time authentication with Firebase Admin SDK
 
 ### 📱 **Modern UI**
 - Responsive design for all devices
 - Dark mode support
 - Drag-and-drop file upload
 - Progress tracking
+
+## 🔐 Admin Authentication
+
+NCryp uses **Firebase Authentication** for secure admin access:
+
+### Features
+- **Firebase Admin SDK** integration
+- **JWT token-based authentication**
+- **Real-time authentication state**
+- **Secure token verification** on backend
+- **No session management** required
+
+### Setup
+1. **Create Firebase Project**: Follow [FIREBASE_SETUP.md](FIREBASE_SETUP.md)
+2. **Configure Frontend**: Add Firebase config to frontend `.env`
+3. **Configure Backend**: Add Firebase credentials (optional)
+4. **Create Admin User**: Add admin user in Firebase Console
+5. **Login**: Use Firebase credentials in admin panel
+
+See [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for detailed setup instructions.
 
 ## 🚀 Quick Start (Production)
 
@@ -178,6 +199,15 @@ CLAMAV_ENABLED=false
 
 ### Setting Up Admin Access
 
+**Option 1: Firebase Authentication (Recommended)**
+
+1. **Set up Firebase Project**: Follow [FIREBASE_SETUP.md](FIREBASE_SETUP.md)
+2. **Configure Frontend**: Add Firebase config to `frontend/.env`
+3. **Create Admin User**: Add admin user in Firebase Console
+4. **Access Admin Dashboard**: Login with Firebase credentials
+
+**Option 2: Legacy Session-Based Authentication**
+
 1. **Generate a secure admin password**:
    ```bash
    python generate_admin_password.py
@@ -192,6 +222,8 @@ CLAMAV_ENABLED=false
    - Go to the "Admin" tab in the application
    - Login with username: `admin` and your chosen password
    - View statistics, manage files, and monitor usage
+
+**Note**: Firebase authentication is the new standard and provides better security and user experience.
 
 ### Storage Backends
 
