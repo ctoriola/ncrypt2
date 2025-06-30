@@ -24,7 +24,6 @@ export default defineConfig({
           vendor: ['react', 'react-dom'],
           router: ['react-router-dom'],
           ui: ['react-toastify', 'react-dropzone'],
-          firebase: ['firebase'],
           utils: ['axios']
         },
         chunkFileNames: 'assets/js/[name]-[hash].js',
@@ -47,6 +46,7 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', 'react-toastify', 'firebase']
+    include: ['react', 'react-dom', 'react-router-dom', 'react-toastify'],
+    exclude: ['firebase']
   }
 }) 

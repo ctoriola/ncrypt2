@@ -36,7 +36,6 @@ export function FileDecryptor() {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'application/octet-stream': ['.encrypted', '.bin', '.enc'],
       'application/octet-stream': ['.encrypted', '.bin', '.enc']
     },
     multiple: false
