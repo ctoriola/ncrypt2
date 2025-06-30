@@ -1,168 +1,272 @@
-# NCryp Deployment Guide
+# NCryp Production Deployment Guide
 
-This guide will help you deploy NCryp to production. Since this is a full-stack application (React frontend + Flask backend), you'll need to deploy them separately.
+This guide covers deploying NCryp to production using Netlify (frontend) and Railway (backend).
 
-## 🚀 **Option 1: Deploy Backend to Railway (Recommended)**
+## 🚀 Quick Deployment
 
-### Step 1: Deploy Backend to Railway
+### 1. Backend Deployment (Railway)
 
-1. **Create Railway Account**: Go to [railway.app](https://railway.app) and sign up
-2. **Connect GitHub**: Connect your GitHub account to Railway
-3. **Deploy from GitHub**: 
-   - Click "New Project"
-   - Select "Deploy from GitHub repo"
-   - Choose your NCryp repository
-   - Railway will automatically detect it's a Python app
-
-4. **Configure Environment Variables**:
-   - Go to your project settings
-   - Add these environment variables:
-   ```
-   STORAGE_TYPE=local
-   LOCAL_STORAGE_PATH=./uploads
-   MAX_FILE_SIZE=104857600
-   FLASK_ENV=production
-   ```
-
-5. **Get Your Backend URL**: Railway will give you a URL like `https://your-app-name.railway.app`
-
-### Step 2: Deploy Frontend to Netlify
-
-1. **Create Netlify Account**: Go to [netlify.com](https://netlify.com) and sign up
-2. **Connect GitHub**: Connect your GitHub account to Netlify
-3. **Deploy from GitHub**:
-   - Click "New site from Git"
-   - Choose your NCryp repository
-   - Set build settings:
-     - **Build command**: `npm run build`
-     - **Publish directory**: `dist`
-   - Click "Deploy site"
-
-4. **Configure Environment Variables**:
-   - Go to Site settings > Environment variables
-   - Add: `VITE_API_URL=https://your-app-name.railway.app`
-   - Redeploy the site
-
-## 🚀 **Option 2: Deploy Backend to Render**
-
-### Step 1: Deploy Backend to Render
-
-1. **Create Render Account**: Go to [render.com](https://render.com) and sign up
-2. **Create New Web Service**:
+1. **Connect your GitHub repository to Railway**
+   - Go to [Railway.app](https://railway.app)
+   - Create a new project
    - Connect your GitHub repository
-   - Choose "Web Service"
-   - Set build command: `pip install -r requirements.txt`
-   - Set start command: `gunicorn server:app --bind 0.0.0.0:$PORT`
-   - Choose your plan (Free tier available)
+   - Railway will automatically detect the Python project
 
-3. **Configure Environment Variables**:
-   ```
-   STORAGE_TYPE=local
-   LOCAL_STORAGE_PATH=./uploads
-   MAX_FILE_SIZE=104857600
+2. **Configure environment variables in Railway**
+   ```bash
+   # Required variables
    FLASK_ENV=production
+   FLASK_DEBUG=False
+   SECRET_KEY=your-generated-secret-key
+   ADMIN_USERNAME=admin
+   ADMIN_PASSWORD_HASH=your-generated-password-hash
+   STORAGE_TYPE=local
+   LOCAL_STORAGE_PATH=/tmp/ncryp-uploads
+   
+   # Optional: Cloud storage (recommended for production)
+   # STORAGE_TYPE=s3
+   # AWS_ACCESS_KEY_ID=your-key
+   # AWS_SECRET_ACCESS_KEY=your-secret
+   # AWS_REGION=us-east-1
+   # S3_BUCKET_NAME=your-bucket
+   
+   # CORS (set to your Netlify domain)
+   CORS_ORIGINS=https://your-app-name.netlify.app
    ```
 
-4. **Get Your Backend URL**: Render will give you a URL like `https://your-app-name.onrender.com`
+3. **Deploy**
+   - Railway will automatically build and deploy
+   - Get your Railway URL (e.g., `https://your-app-name.railway.app`)
 
-### Step 2: Deploy Frontend to Netlify
+### 2. Frontend Deployment (Netlify)
 
-Follow the same steps as Option 1, but use your Render backend URL.
+1. **Connect your GitHub repository to Netlify**
+   - Go to [Netlify.com](https://netlify.com)
+   - Create a new site from Git
+   - Connect your GitHub repository
 
-## 🚀 **Option 3: Deploy Backend to Heroku**
-
-### Step 1: Deploy Backend to Heroku
-
-1. **Create Heroku Account**: Go to [heroku.com](https://heroku.com) and sign up
-2. **Install Heroku CLI**: Download and install from [devcenter.heroku.com](https://devcenter.heroku.com/articles/heroku-cli)
-3. **Deploy**:
+2. **Configure build settings**
    ```bash
-   heroku create your-app-name
-   git push heroku main
+   Base directory: frontend
+   Build command: npm run build
+   Publish directory: dist
    ```
 
-4. **Configure Environment Variables**:
+3. **Set environment variables**
    ```bash
-   heroku config:set STORAGE_TYPE=local
-   heroku config:set LOCAL_STORAGE_PATH=./uploads
-   heroku config:set MAX_FILE_SIZE=104857600
-   heroku config:set FLASK_ENV=production
+   VITE_API_URL=https://your-app-name.railway.app
    ```
 
-5. **Get Your Backend URL**: `https://your-app-name.herokuapp.com`
+4. **Deploy**
+   - Netlify will automatically build and deploy
+   - Get your Netlify URL (e.g., `https://your-app-name.netlify.app`)
 
-### Step 2: Deploy Frontend to Netlify
+## 🔧 Detailed Configuration
 
-Follow the same steps as Option 1, but use your Heroku backend URL.
+### Environment Variables
 
-## 🔧 **Environment Variables Reference**
+#### Railway (Backend) Variables
 
-### Backend Environment Variables
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `FLASK_ENV` | Flask environment | Yes | `production` |
+| `FLASK_DEBUG` | Debug mode | Yes | `False` |
+| `SECRET_KEY` | Flask secret key | Yes | Generate new |
+| `ADMIN_USERNAME` | Admin username | Yes | `admin` |
+| `ADMIN_PASSWORD_HASH` | Admin password hash | Yes | Generate new |
+| `STORAGE_TYPE` | Storage backend | Yes | `local` |
+| `LOCAL_STORAGE_PATH` | Local storage path | Yes | `/tmp/ncryp-uploads` |
+| `CORS_ORIGINS` | Allowed origins | Yes | Your Netlify domain |
+| `MAX_FILE_SIZE` | Max file size | No | `104857600` |
+| `LOG_LEVEL` | Logging level | No | `INFO` |
+
+#### Netlify (Frontend) Variables
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `VITE_API_URL` | Backend API URL | Yes | Your Railway URL |
+
+### Storage Configuration
+
+#### Option 1: Local Storage (Temporary)
 ```bash
-# Storage Configuration
-STORAGE_TYPE=local                    # local, s3, gcs, azure
-LOCAL_STORAGE_PATH=./uploads          # Local storage path
-MAX_FILE_SIZE=104857600               # 100MB in bytes
+STORAGE_TYPE=local
+LOCAL_STORAGE_PATH=/tmp/ncryp-uploads
+```
+⚠️ **Warning**: Data will be lost on Railway restarts
 
-# Flask Configuration
-FLASK_ENV=production                  # production or development
-SECRET_KEY=your-secret-key            # Flask secret key
-
-# AWS S3 (if using S3 storage)
+#### Option 2: AWS S3 (Recommended)
+```bash
+STORAGE_TYPE=s3
 AWS_ACCESS_KEY_ID=your-access-key
 AWS_SECRET_ACCESS_KEY=your-secret-key
 AWS_REGION=us-east-1
 S3_BUCKET_NAME=your-bucket-name
+```
 
-# Google Cloud Storage (if using GCS)
+#### Option 3: Google Cloud Storage
+```bash
+STORAGE_TYPE=gcs
 GCS_BUCKET_NAME=your-bucket-name
+# Set GOOGLE_APPLICATION_CREDENTIALS in Railway
+```
 
-# Azure Blob Storage (if using Azure)
+#### Option 4: Azure Blob Storage
+```bash
+STORAGE_TYPE=azure
 AZURE_CONNECTION_STRING=your-connection-string
 AZURE_CONTAINER_NAME=your-container-name
 ```
 
-### Frontend Environment Variables
+## 🔐 Security Setup
+
+### 1. Generate Secret Key
 ```bash
-# API Configuration
-VITE_API_URL=https://your-backend-url.com
+python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-## 🐛 **Troubleshooting**
+### 2. Generate Admin Password
+```bash
+python generate_admin_password.py
+```
 
-### Common Issues:
+### 3. Update Railway Variables
+- Add the generated secret key to `SECRET_KEY`
+- Add the generated password hash to `ADMIN_PASSWORD_HASH`
 
-1. **CORS Errors**: Make sure your backend has CORS configured properly
-2. **API URL Not Found**: Check that `VITE_API_URL` is set correctly in Netlify
-3. **Upload Failures**: Verify file size limits and storage configuration
-4. **Build Failures**: Check that all dependencies are in `package.json` and `requirements.txt`
+## 📊 Monitoring & Analytics
 
-### Testing Your Deployment:
+### Railway Monitoring
+- **Logs**: View real-time logs in Railway dashboard
+- **Metrics**: Monitor CPU, memory, and network usage
+- **Health Checks**: Automatic health checks at `/api/health`
 
-1. **Test Backend**: Visit `https://your-backend-url.com/api/health`
-2. **Test Frontend**: Visit your Netlify URL and try uploading a file
-3. **Check Logs**: Use your hosting platform's log viewer to debug issues
+### Admin Dashboard
+- Access via your Netlify domain → Admin tab
+- Monitor visitor statistics
+- Track file uploads/downloads
+- View system analytics
 
-## 🔒 **Security Considerations**
+## 🔄 Continuous Deployment
 
-1. **HTTPS**: All production deployments should use HTTPS
-2. **Environment Variables**: Never commit sensitive data to your repository
-3. **CORS**: Configure CORS to only allow your frontend domain in production
-4. **File Storage**: Consider using cloud storage (S3, GCS, Azure) for production
+### Automatic Deployments
+- **Railway**: Automatically deploys on Git push to main branch
+- **Netlify**: Automatically deploys on Git push to main branch
 
-## 📝 **Next Steps**
+### Manual Deployments
+```bash
+# Railway
+railway up
 
-After deployment:
-1. Test all functionality (upload, download, delete, decrypt)
-2. Set up monitoring and logging
-3. Configure backups for your storage
-4. Set up a custom domain (optional)
-5. Configure SSL certificates (usually automatic)
+# Netlify
+netlify deploy --prod
+```
 
-## 🆘 **Need Help?**
+## 🛠️ Troubleshooting
 
-If you encounter issues:
-1. Check the logs in your hosting platform
-2. Verify all environment variables are set correctly
-3. Test the backend API endpoints directly
-4. Check browser console for frontend errors 
+### Common Issues
+
+#### 1. CORS Errors
+**Problem**: Frontend can't connect to backend
+**Solution**: 
+- Set `CORS_ORIGINS` to your exact Netlify domain
+- Include protocol: `https://your-app.netlify.app`
+
+#### 2. File Upload Failures
+**Problem**: Files not uploading
+**Solution**:
+- Check `MAX_FILE_SIZE` setting
+- Verify storage backend configuration
+- Check Railway logs for errors
+
+#### 3. Admin Login Issues
+**Problem**: Can't access admin dashboard
+**Solution**:
+- Verify `ADMIN_PASSWORD_HASH` is correctly set
+- Check that password hash was generated properly
+- Ensure `SECRET_KEY` is set
+
+#### 4. Storage Issues
+**Problem**: Files disappearing after restart
+**Solution**:
+- Switch to cloud storage (S3, GCS, Azure)
+- Local storage is ephemeral on Railway
+
+### Debug Mode
+For troubleshooting, temporarily enable debug mode:
+```bash
+FLASK_DEBUG=True
+LOG_LEVEL=DEBUG
+```
+
+## 📈 Performance Optimization
+
+### Frontend (Netlify)
+- Automatic code splitting
+- Optimized bundle sizes
+- CDN distribution
+- Automatic HTTPS
+
+### Backend (Railway)
+- Automatic scaling
+- Health checks
+- Load balancing
+- Automatic restarts
+
+## 🔒 Production Security Checklist
+
+- [ ] Generate new `SECRET_KEY`
+- [ ] Generate secure admin password
+- [ ] Set `FLASK_DEBUG=False`
+- [ ] Configure CORS origins
+- [ ] Set up cloud storage
+- [ ] Enable HTTPS (automatic on Railway/Netlify)
+- [ ] Configure proper file size limits
+- [ ] Set up monitoring and logging
+
+## 🚀 Deployment Commands
+
+### Quick Deploy
+```bash
+# 1. Generate production credentials
+python generate_admin_password.py
+python -c "import secrets; print(secrets.token_hex(32))"
+
+# 2. Update Railway environment variables
+# 3. Push to GitHub (triggers automatic deployment)
+git add .
+git commit -m "Production deployment"
+git push
+```
+
+### Manual Railway Deploy
+```bash
+railway login
+railway link
+railway up
+```
+
+### Manual Netlify Deploy
+```bash
+cd frontend
+npm run build
+netlify deploy --prod --dir=dist
+```
+
+## 📞 Support
+
+For deployment issues:
+1. Check Railway logs
+2. Check Netlify build logs
+3. Verify environment variables
+4. Test API endpoints directly
+5. Check CORS configuration
+
+## 🔄 Updates
+
+To update your deployment:
+1. Make changes to your code
+2. Test locally if possible
+3. Push to GitHub
+4. Monitor deployment logs
+5. Verify functionality on production 

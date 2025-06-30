@@ -35,18 +35,14 @@ else:
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 
-# Configure CORS with proper settings for admin sessions
-CORS(app, 
-     origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000'], 
-     supports_credentials=True,
-     allow_headers=['Content-Type', 'Authorization'],
-     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
-
-# Configure session settings
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=int(os.getenv('ADMIN_SESSION_TIMEOUT', 3600)))
+# CORS Configuration for production
+CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*')
+if CORS_ORIGINS == '*':
+    CORS(app, origins=['*'], supports_credentials=True)
+else:
+    # Parse multiple origins if provided
+    origins = [origin.strip() for origin in CORS_ORIGINS.split(',')]
+    CORS(app, origins=origins, supports_credentials=True)
 
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_FILE_SIZE', 100 * 1024 * 1024))  # 100MB max file size
@@ -817,11 +813,8 @@ def admin_login():
         if username != ADMIN_USERNAME or not verify_admin_password(password, ADMIN_PASSWORD_HASH):
             return jsonify({'error': 'Invalid username or password'}), 401
         
-        session.permanent = True
         session['admin'] = True
         session['admin_login_time'] = datetime.utcnow().isoformat()
-        
-        logging.info(f"Admin login successful for user: {username}")
         return jsonify({'message': 'Admin login successful'}), 200
     except Exception as e:
         logging.error(f"Login error: {str(e)}")
@@ -843,19 +836,14 @@ def admin_logout():
 def get_admin_stats():
     """Admin stats endpoint"""
     try:
-        logging.info(f"Admin stats requested by session: {session}")
-        
-        stats_data = {
+        return jsonify({
             'total_visits': visitor_stats['total_visits'],
             'unique_visitors': len(visitor_stats['unique_visitors']),
             'daily_visits': visitor_stats['daily_visits'],
             'page_views': visitor_stats['page_views'],
             'upload_stats': visitor_stats['upload_stats'],
             'download_stats': visitor_stats['download_stats']
-        }
-        
-        logging.info(f"Returning stats: {stats_data}")
-        return jsonify(stats_data), 200
+        }), 200
     except Exception as e:
         logging.error(f"Stats error: {str(e)}")
         return jsonify({'error': f'Stats failed: {str(e)}'}), 500
@@ -884,7 +872,8 @@ def get_admin_files():
 
 if __name__ == '__main__':
     # Configure logging
-    logging.basicConfig(level=logging.INFO)
+    log_level = os.getenv('LOG_LEVEL', 'INFO')
+    logging.basicConfig(level=getattr(logging, log_level.upper()))
     
     # Create S3 bucket if using S3 and it doesn't exist
     if STORAGE_TYPE == 's3' and s3_client:
@@ -894,5 +883,13 @@ if __name__ == '__main__':
             s3_client.create_bucket(Bucket=SECURE_BUCKET)
             logging.info(f"Created S3 bucket: {SECURE_BUCKET}")
     
+    # Get port from environment (Railway sets PORT)
+    port = int(os.getenv('PORT', 5000))
+    host = os.getenv('HOST', '0.0.0.0')
+    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    
     logging.info(f"Starting NCryp server with {STORAGE_TYPE} storage backend")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    logging.info(f"Server will run on {host}:{port}")
+    logging.info(f"Debug mode: {debug}")
+    
+    app.run(debug=debug, host=host, port=port)

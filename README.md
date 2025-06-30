@@ -1,6 +1,11 @@
 # NCryp - Secure Encrypted File Transfer
 
-NCryp is a secure client-side encrypted file transfer application that allows users to upload files with end-to-end encryption and share them with others using unique share IDs.
+NCryp is a secure client-side encrypted file transfer application that allows users to upload files with end-to-end encryption and share them with others using unique share IDs. Deployed on Netlify (frontend) and Railway (backend).
+
+## 🚀 Live Demo
+
+- **Frontend**: [https://ncryp.netlify.app](https://ncryp.netlify.app)
+- **Backend**: [https://ncryp-backend.railway.app](https://ncryp-backend.railway.app)
 
 ## Features
 
@@ -37,15 +42,36 @@ NCryp is a secure client-side encrypted file transfer application that allows us
 - Drag-and-drop file upload
 - Progress tracking
 
-## How It Works
+## 🚀 Quick Start (Production)
 
-1. **Upload**: Drag and drop a file, enter a passphrase, and get a share ID
-2. **Share**: Send the share ID to anyone you want to share the file with
-3. **Download**: Recipients enter the share ID to download the encrypted file
-4. **Decrypt**: Use the original passphrase to decrypt the file
-5. **Monitor**: Use the admin dashboard to track usage and manage files
+### Option 1: Use the Live Demo
+Visit [https://ncryp.netlify.app](https://ncryp.netlify.app) to use the application immediately.
 
-## Quick Start
+### Option 2: Deploy Your Own Instance
+
+1. **Fork this repository** on GitHub
+
+2. **Deploy Backend to Railway**:
+   - Go to [Railway.app](https://railway.app)
+   - Connect your forked repository
+   - Set environment variables (see [DEPLOYMENT.md](DEPLOYMENT.md))
+   - Get your Railway URL
+
+3. **Deploy Frontend to Netlify**:
+   - Go to [Netlify.com](https://netlify.com)
+   - Connect your forked repository
+   - Set `VITE_API_URL` to your Railway URL
+   - Deploy
+
+4. **Set up Admin Access**:
+   ```bash
+   python generate_admin_password.py
+   # Add the generated hash to Railway environment variables
+   ```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
+
+## 🔧 Local Development
 
 ### Prerequisites
 - Python 3.8+
@@ -256,70 +282,39 @@ See [STORAGE_SETUP.md](STORAGE_SETUP.md) for detailed setup instructions.
 - `GET /api/admin/stats` - Get visitor and usage statistics
 - `GET /api/admin/files` - Get all files with metadata
 
+## Deployment
+
+### Production Deployment
+- **Frontend**: Deployed on Netlify with automatic HTTPS
+- **Backend**: Deployed on Railway with automatic scaling
+- **Storage**: Supports local, S3, GCS, and Azure storage
+- **Monitoring**: Built-in admin dashboard and Railway metrics
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for complete deployment instructions.
+
 ## Development
 
 ### Project Structure
 ```
 NCryp/
-├── server.py              # Flask backend
-├── requirements.txt       # Python dependencies
-├── env.example           # Environment template
-├── frontend/             # React frontend
+├── frontend/                 # React frontend
 │   ├── src/
-│   │   ├── components/   # React components
-│   │   ├── App.jsx       # Main app component
-│   │   └── main.jsx      # App entry point
-│   ├── package.json      # Node dependencies
-│   └── vite.config.js    # Vite configuration
-└── uploads/              # Local file storage
+│   │   ├── components/      # React components
+│   │   └── workers/         # Web Workers for encryption
+│   └── package.json
+├── server.py                # Flask backend
+├── requirements.txt         # Python dependencies
+├── env.example             # Environment template
+├── DEPLOYMENT.md           # Deployment guide
+├── STORAGE_SETUP.md        # Storage setup guide
+└── ADMIN_SETUP.md          # Admin setup guide
 ```
 
-### Running in Development
-
-```bash
-# Backend (Flask)
-python server.py
-
-# Frontend (React + Vite)
-cd frontend
-npm run dev
-```
-
-### Building for Production
-
-```bash
-# Build frontend
-cd frontend
-npm run build
-
-# Serve with Flask
-python server.py
-```
-
-## Deployment
-
-### Railway
-1. Connect your GitHub repository to Railway
-2. Set environment variables in Railway dashboard
-3. Deploy automatically on push
-
-### Heroku
-1. Create a Heroku app
-2. Set environment variables
-3. Deploy using Git
-
-### Docker
-```bash
-docker build -t ncryp .
-docker run -p 5000:5000 ncryp
-```
-
-## Contributing
-
+### Contributing
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests if applicable
+4. Test thoroughly
 5. Submit a pull request
 
 ## License
@@ -328,15 +323,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Support
 
-For support and questions:
-- Create an issue on GitHub
-- Check the documentation
-- Review the configuration examples
-
-## Security Considerations
-
-- Always use strong, unique passphrases
-- Share passphrases securely (not through the same channel as share IDs)
-- Regularly rotate passphrases for sensitive files
-- Consider the security implications of your chosen storage backend
-- Keep the application and dependencies updated 
+- **Documentation**: Check the guides in this repository
+- **Issues**: Report bugs and feature requests on GitHub
+- **Deployment**: See [DEPLOYMENT.md](DEPLOYMENT.md) for help
+- **Admin Setup**: See [ADMIN_SETUP.md](ADMIN_SETUP.md) for admin configuration 
