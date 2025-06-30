@@ -20,6 +20,14 @@ export const AdminDashboard = ({ onLogout }) => {
     try {
       setLoading(true);
       
+      // Test session first
+      console.log('Testing session...');
+      const sessionTest = await fetch(`${API_BASE_URL}/api/admin/test-session`, {
+        credentials: 'include'
+      });
+      const sessionData = await sessionTest.json();
+      console.log('Session test result:', sessionData);
+      
       // Load stats and files in parallel
       const [statsResponse, filesResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/admin/stats`, {
@@ -30,10 +38,15 @@ export const AdminDashboard = ({ onLogout }) => {
         })
       ]);
 
+      console.log('Stats response status:', statsResponse.status);
+      console.log('Files response status:', filesResponse.status);
+
       if (statsResponse.ok) {
         const statsData = await statsResponse.json();
         setStats(statsData);
       } else {
+        const errorData = await statsResponse.text();
+        console.error('Stats error response:', errorData);
         toast.error('Failed to load statistics');
       }
 
@@ -41,6 +54,8 @@ export const AdminDashboard = ({ onLogout }) => {
         const filesData = await filesResponse.json();
         setFiles(filesData.files || []);
       } else {
+        const errorData = await filesResponse.text();
+        console.error('Files error response:', errorData);
         toast.error('Failed to load files');
       }
     } catch (error) {

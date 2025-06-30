@@ -35,6 +35,12 @@ else:
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 
+# Session configuration for production
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=int(os.getenv('ADMIN_SESSION_TIMEOUT', 3600)))
+
 # CORS Configuration for production
 CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*')
 if CORS_ORIGINS == '*':
@@ -519,8 +525,15 @@ def require_admin(f):
     """Decorator to require admin authentication"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        logging.info(f"Admin endpoint accessed: {request.endpoint}")
+        logging.info(f"Session admin flag: {session.get('admin')}")
+        logging.info(f"Full session: {dict(session)}")
+        
         if not session.get('admin'):
+            logging.warning(f"Admin access denied for {request.remote_addr}")
             return jsonify({'error': 'Admin authentication required'}), 401
+        
+        logging.info(f"Admin access granted for {request.remote_addr}")
         return f(*args, **kwargs)
     return decorated_function
 
@@ -810,11 +823,19 @@ def admin_login():
         username = data.get('username')
         password = data.get('password')
         
+        logging.info(f"Admin login attempt from {request.remote_addr}")
+        logging.info(f"Username: {username}")
+        
         if username != ADMIN_USERNAME or not verify_admin_password(password, ADMIN_PASSWORD_HASH):
+            logging.warning(f"Admin login failed for {request.remote_addr}")
             return jsonify({'error': 'Invalid username or password'}), 401
         
         session['admin'] = True
         session['admin_login_time'] = datetime.utcnow().isoformat()
+        
+        logging.info(f"Admin login successful for {request.remote_addr}")
+        logging.info(f"Session after login: {dict(session)}")
+        
         return jsonify({'message': 'Admin login successful'}), 200
     except Exception as e:
         logging.error(f"Login error: {str(e)}")
@@ -836,14 +857,20 @@ def admin_logout():
 def get_admin_stats():
     """Admin stats endpoint"""
     try:
-        return jsonify({
+        logging.info(f"Admin stats request from {request.remote_addr}")
+        logging.info(f"Session data: {dict(session)}")
+        
+        stats_data = {
             'total_visits': visitor_stats['total_visits'],
             'unique_visitors': len(visitor_stats['unique_visitors']),
             'daily_visits': visitor_stats['daily_visits'],
             'page_views': visitor_stats['page_views'],
             'upload_stats': visitor_stats['upload_stats'],
             'download_stats': visitor_stats['download_stats']
-        }), 200
+        }
+        
+        logging.info(f"Returning stats: {stats_data}")
+        return jsonify(stats_data), 200
     except Exception as e:
         logging.error(f"Stats error: {str(e)}")
         return jsonify({'error': f'Stats failed: {str(e)}'}), 500
@@ -853,6 +880,9 @@ def get_admin_stats():
 def get_admin_files():
     """Admin endpoint to get all files with metadata"""
     try:
+        logging.info(f"Admin files request from {request.remote_addr}")
+        logging.info(f"Session data: {dict(session)}")
+        
         files = []
         for file_id, metadata in file_metadata.items():
             files.append({
@@ -865,10 +895,30 @@ def get_admin_files():
                 'mime_type': metadata.get('mime_type', 'unknown')
             })
         
+        logging.info(f"Returning {len(files)} files")
         return jsonify({'files': files}), 200
     except Exception as e:
         logging.error(f"Admin files error: {str(e)}")
         return jsonify({'error': f'Failed to get files: {str(e)}'}), 500
+
+@app.route('/api/admin/test-session', methods=['GET'])
+def test_session():
+    """Test endpoint to check if sessions are working"""
+    try:
+        logging.info(f"Session test request from {request.remote_addr}")
+        logging.info(f"Current session: {dict(session)}")
+        
+        # Set a test value in session
+        session['test_value'] = 'session_working'
+        
+        return jsonify({
+            'session_working': True,
+            'session_data': dict(session),
+            'admin_logged_in': session.get('admin', False)
+        }), 200
+    except Exception as e:
+        logging.error(f"Session test error: {str(e)}")
+        return jsonify({'error': f'Session test failed: {str(e)}'}), 500
 
 if __name__ == '__main__':
     # Configure logging
