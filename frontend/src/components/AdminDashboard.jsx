@@ -27,6 +27,8 @@ export const AdminDashboard = ({ onLogout }) => {
         messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ? 'Set' : 'Not set',
         appId: import.meta.env.VITE_FIREBASE_APP_ID ? 'Set' : 'Not set'
       });
+      console.log('Firebase Project ID:', import.meta.env.VITE_FIREBASE_PROJECT_ID);
+      console.log('Firebase Auth Domain:', import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
       loadDashboardData();
     } else {
       console.log('No current user found');
@@ -44,6 +46,9 @@ export const AdminDashboard = ({ onLogout }) => {
       try {
         idToken = await currentUser.getIdToken(true); // Force refresh the token
         console.log('Firebase token obtained successfully');
+        console.log('Token length:', idToken.length);
+        console.log('Token starts with:', idToken.substring(0, 20) + '...');
+        console.log('Token ends with:', '...' + idToken.substring(idToken.length - 20));
       } catch (tokenError) {
         console.error('Failed to get Firebase token:', tokenError);
         setError('Authentication failed. Please log in again.');

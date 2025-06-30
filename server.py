@@ -1049,7 +1049,9 @@ def test_firebase_config():
             'auth_module_available': auth is not None,
             'firebase_admin_imported': firebase_admin is not None,
             'credentials_path': os.getenv('FIREBASE_CREDENTIALS_PATH'),
-            'credentials_file_exists': os.path.exists(os.getenv('FIREBASE_CREDENTIALS_PATH', '')) if os.getenv('FIREBASE_CREDENTIALS_PATH') else False
+            'credentials_file_exists': os.path.exists(os.getenv('FIREBASE_CREDENTIALS_PATH', '')) if os.getenv('FIREBASE_CREDENTIALS_PATH') else False,
+            'project_id': os.getenv('FIREBASE_PROJECT_ID'),
+            'auth_domain': os.getenv('FIREBASE_AUTH_DOMAIN')
         }
         
         logging.info(f"Firebase config status: {config_status}")
@@ -1061,6 +1063,59 @@ def test_firebase_config():
     except Exception as e:
         logging.error(f"Firebase config test error: {str(e)}")
         return jsonify({'error': f'Firebase config test failed: {str(e)}'}), 500
+
+@app.route('/api/admin/test-token', methods=['POST'])
+def test_firebase_token():
+    """Test endpoint to verify Firebase token without requiring authentication"""
+    try:
+        logging.info("Testing Firebase token verification...")
+        
+        data = request.get_json()
+        if not data or 'token' not in data:
+            return jsonify({'error': 'Token required'}), 400
+        
+        id_token = data['token']
+        logging.info(f"Testing token length: {len(id_token)}")
+        logging.info(f"Token starts with: {id_token[:20]}...")
+        
+        if not FIREBASE_AVAILABLE or not auth:
+            logging.error("Firebase Admin SDK not available")
+            return jsonify({'error': 'Firebase authentication not configured'}), 500
+        
+        try:
+            logging.info("Attempting to verify Firebase ID token...")
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+            email = decoded_token.get('email', '')
+            project_id = decoded_token.get('aud', '')
+            
+            logging.info(f"Token verification successful!")
+            logging.info(f"User: {email} ({user_id})")
+            logging.info(f"Project ID: {project_id}")
+            logging.info(f"Token claims: {list(decoded_token.keys())}")
+            
+            return jsonify({
+                'success': True,
+                'user': {
+                    'uid': user_id,
+                    'email': email
+                },
+                'project_id': project_id,
+                'token_claims': list(decoded_token.keys())
+            }), 200
+            
+        except Exception as e:
+            logging.error(f"Token verification failed: {str(e)}")
+            logging.error(f"Exception type: {type(e).__name__}")
+            return jsonify({
+                'success': False,
+                'error': str(e),
+                'error_type': type(e).__name__
+            }), 400
+            
+    except Exception as e:
+        logging.error(f"Token test error: {str(e)}")
+        return jsonify({'error': f'Token test failed: {str(e)}'}), 500
 
 @app.route('/api/admin/test-session', methods=['GET'])
 def test_session():

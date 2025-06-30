@@ -1,6 +1,7 @@
 import React from 'react';
 import { AdminLogin } from '../components/AdminLogin';
 import { AdminDashboard } from '../components/AdminDashboard';
+import { FirebaseTest } from '../components/FirebaseTest';
 import { useAuth } from '../contexts/AuthContext';
 import { usePageTracking } from '../hooks/usePageTracking';
 import './AdminPage.css';
@@ -31,7 +32,10 @@ export function AdminPage() {
 
         <div className="admin-page-content">
           {currentUser ? (
-            <AdminDashboard onLogout={handleAdminLogout} />
+            <>
+              <FirebaseTest />
+              <AdminDashboard onLogout={handleAdminLogout} />
+            </>
           ) : (
             <AdminLogin onLoginSuccess={handleAdminLoginSuccess} />
           )}
