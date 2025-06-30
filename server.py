@@ -33,6 +33,18 @@ try:
     FIREBASE_AVAILABLE = True
     logger.info("Firebase Admin SDK imported successfully")
     
+    # Create Firebase credentials file from environment variable (for Railway)
+    firebase_creds_json = os.getenv('FIREBASE_CREDENTIALS')
+    if firebase_creds_json:
+        try:
+            import json
+            creds_path = os.getenv('FIREBASE_CREDENTIALS_PATH', '/tmp/firebase-credentials.json')
+            with open(creds_path, 'w') as f:
+                json.dump(json.loads(firebase_creds_json), f)
+            logger.info(f"Created Firebase credentials file from environment variable: {creds_path}")
+        except Exception as e:
+            logger.error(f"Failed to create Firebase credentials file: {e}")
+    
     # Initialize Firebase Admin SDK
     firebase_credentials_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
     if firebase_credentials_path and os.path.exists(firebase_credentials_path):
