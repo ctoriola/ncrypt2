@@ -5,6 +5,8 @@ import { FileList } from './components/FileList';
 import { FileSearch } from './components/FileSearch';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
+import { AdminLogin } from './components/AdminLogin';
+import { AdminDashboard } from './components/AdminDashboard';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
@@ -16,9 +18,10 @@ const API_BASE_URL = import.meta.env.VITE_API_URL
 
 function App() {
   const [darkMode, setDarkMode] = useState(false);
-  const [activeTab, setActiveTab] = useState('upload'); // 'upload', 'decrypt', or 'search'
+  const [activeTab, setActiveTab] = useState('upload'); // 'upload', 'decrypt', 'search', or 'admin'
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
 
   useEffect(() => {
     // Check for saved dark mode preference
@@ -78,6 +81,16 @@ function App() {
     setDarkMode(!darkMode);
   };
 
+  const handleAdminLoginSuccess = () => {
+    setIsAdminLoggedIn(true);
+    setActiveTab('admin');
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdminLoggedIn(false);
+    setActiveTab('upload');
+  };
+
   return (
     <div className="app">
       <Header darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
@@ -118,6 +131,17 @@ function App() {
               </svg>
               Decrypt Files
             </button>
+            <button
+              className={`nav-tab ${activeTab === 'admin' ? 'active' : ''}`}
+              onClick={() => setActiveTab('admin')}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                <path d="M2 17l10 5 10-5"></path>
+                <path d="M2 12l10 5 10-5"></path>
+              </svg>
+              Admin
+            </button>
           </div>
 
           {/* Tab Content */}
@@ -152,6 +176,16 @@ function App() {
           {activeTab === 'decrypt' && (
             <section className="decrypt-section">
               <FileDecryptor />
+            </section>
+          )}
+
+          {activeTab === 'admin' && (
+            <section className="admin-section">
+              {isAdminLoggedIn ? (
+                <AdminDashboard onLogout={handleAdminLogout} />
+              ) : (
+                <AdminLogin onLoginSuccess={handleAdminLoginSuccess} />
+              )}
             </section>
           )}
         </div>

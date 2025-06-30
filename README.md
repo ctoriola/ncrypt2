@@ -25,6 +25,12 @@ NCryp is a secure client-side encrypted file transfer application that allows us
 - Size limits and security checks
 - Multiple storage backend support
 
+### 📊 **Admin Dashboard**
+- Monitor visitor statistics and analytics
+- Track file uploads and downloads
+- View all stored files and metadata
+- Secure admin authentication
+
 ### 📱 **Modern UI**
 - Responsive design for all devices
 - Dark mode support
@@ -37,6 +43,7 @@ NCryp is a secure client-side encrypted file transfer application that allows us
 2. **Share**: Send the share ID to anyone you want to share the file with
 3. **Download**: Recipients enter the share ID to download the encrypted file
 4. **Decrypt**: Use the original passphrase to decrypt the file
+5. **Monitor**: Use the admin dashboard to track usage and manage files
 
 ## Quick Start
 
@@ -71,7 +78,13 @@ NCryp is a secure client-side encrypted file transfer application that allows us
    # Edit env.local with your configuration
    ```
 
-5. **Start the application**
+5. **Set up admin credentials**
+   ```bash
+   python generate_admin_password.py
+   # Follow the instructions to set up admin password
+   ```
+
+6. **Start the application**
    ```bash
    # Windows
    start.bat
@@ -90,7 +103,7 @@ NCryp is a secure client-side encrypted file transfer application that allows us
    npm run dev
    ```
 
-6. **Open your browser**
+7. **Open your browser**
    Navigate to `http://localhost:5173`
 
 ## Configuration
@@ -104,6 +117,11 @@ Create an `env.local` file with the following variables:
 FLASK_ENV=development
 FLASK_DEBUG=true
 SECRET_KEY=your-secret-key-here
+
+# Admin Configuration
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD_HASH=your-generated-password-hash
+ADMIN_SESSION_TIMEOUT=3600
 
 # File Upload Settings
 MAX_FILE_SIZE=104857600  # 100MB in bytes
@@ -131,6 +149,23 @@ AZURE_CONTAINER_NAME=your-container-name
 # ClamAV (optional)
 CLAMAV_ENABLED=false
 ```
+
+### Setting Up Admin Access
+
+1. **Generate a secure admin password**:
+   ```bash
+   python generate_admin_password.py
+   ```
+
+2. **Update your env.local file** with the generated password hash:
+   ```bash
+   ADMIN_PASSWORD_HASH=your-generated-hash-here
+   ```
+
+3. **Access the admin dashboard**:
+   - Go to the "Admin" tab in the application
+   - Login with username: `admin` and your chosen password
+   - View statistics, manage files, and monitor usage
 
 ### Storage Backends
 
@@ -169,6 +204,23 @@ See [STORAGE_SETUP.md](STORAGE_SETUP.md) for detailed setup instructions.
 3. Enter the original passphrase
 4. Click "Decrypt" to download the original file
 
+### Admin Dashboard
+
+1. Go to the "Admin" tab
+2. Login with your admin credentials
+3. View overview statistics:
+   - Total visits and unique visitors
+   - Upload and download counts
+   - Storage usage information
+4. Manage files:
+   - View all uploaded files
+   - See file metadata and share IDs
+   - Monitor file status
+5. View analytics:
+   - Daily visit trends
+   - Page view statistics
+   - Usage patterns
+
 ## Security
 
 ### Encryption Details
@@ -184,6 +236,8 @@ See [STORAGE_SETUP.md](STORAGE_SETUP.md) for detailed setup instructions.
 - File type validation
 - Malware scanning (optional)
 - No server-side access to unencrypted files
+- Secure admin authentication with HMAC-SHA256
+- Session-based admin access with timeout
 
 ## API Endpoints
 
@@ -195,6 +249,12 @@ See [STORAGE_SETUP.md](STORAGE_SETUP.md) for detailed setup instructions.
 
 ### File Sharing
 - `GET /api/search/<share_id>` - Search for file by share ID
+
+### Admin Endpoints
+- `POST /api/admin/login` - Admin login
+- `POST /api/admin/logout` - Admin logout
+- `GET /api/admin/stats` - Get visitor and usage statistics
+- `GET /api/admin/files` - Get all files with metadata
 
 ## Development
 

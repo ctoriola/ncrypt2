@@ -6,13 +6,16 @@ import mimetypes
 import boto3
 import secrets
 import string
-from datetime import datetime
-from flask import Flask, request, jsonify, Response
+from datetime import datetime, timedelta
+from flask import Flask, request, jsonify, Response, session
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 import logging
 from pathlib import Path
+from functools import wraps
+import hashlib
+import hmac
 
 # Optional ClamAV import
 try:
@@ -30,7 +33,8 @@ else:
     load_dotenv()
 
 app = Flask(__name__)
-CORS(app, origins=['*'])  # Allow all origins for now, configure properly in production
+app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
+CORS(app, origins=['*'], supports_credentials=True)  # Allow all origins for now, configure properly in production
 
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_FILE_SIZE', 100 * 1024 * 1024))  # 100MB max file size
@@ -39,6 +43,28 @@ ALLOWED_MIME_TYPES = {
     'image/gif', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'text/csv', 'application/zip', 'application/x-rar-compressed', 'application/octet-stream'
+}
+
+# Admin Configuration
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD_HASH = os.getenv('ADMIN_PASSWORD_HASH', '')
+ADMIN_SESSION_TIMEOUT = int(os.getenv('ADMIN_SESSION_TIMEOUT', 3600))  # 1 hour
+
+# Visitor tracking storage (use Redis in production)
+visitor_stats = {
+    'total_visits': 0,
+    'unique_visitors': set(),
+    'daily_visits': {},
+    'page_views': {},
+    'upload_stats': {
+        'total_uploads': 0,
+        'total_size': 0,
+        'uploads_by_date': {}
+    },
+    'download_stats': {
+        'total_downloads': 0,
+        'downloads_by_date': {}
+    }
 }
 
 # File extension to MIME type mapping for better detection
@@ -447,15 +473,96 @@ def scan_for_malware(file_data):
         logging.error(f"Malware scan error: {e}")
         return True  # Continue if scan fails
 
-# Generate a short, shareable ID (8 characters, alphanumeric)
 def generate_share_id():
-    """Generate a short, shareable ID for files"""
-    alphabet = string.ascii_uppercase + string.digits
-    return ''.join(secrets.choice(alphabet) for _ in range(8))
+    """Generate a unique 8-character share ID"""
+    return ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+
+def track_visitor():
+    """Track visitor statistics"""
+    try:
+        # Get visitor IP
+        visitor_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        if visitor_ip and ',' in visitor_ip:
+            visitor_ip = visitor_ip.split(',')[0].strip()
+        
+        # Get current date
+        today = datetime.utcnow().date().isoformat()
+        
+        # Update visitor stats
+        visitor_stats['total_visits'] += 1
+        if visitor_ip:
+            visitor_stats['unique_visitors'].add(visitor_ip)
+        
+        # Track daily visits
+        if today not in visitor_stats['daily_visits']:
+            visitor_stats['daily_visits'][today] = 0
+        visitor_stats['daily_visits'][today] += 1
+        
+        # Track page views
+        page = request.path
+        if page not in visitor_stats['page_views']:
+            visitor_stats['page_views'][page] = 0
+        visitor_stats['page_views'][page] += 1
+        
+    except Exception as e:
+        logging.error(f"Visitor tracking error: {str(e)}")
+
+def require_admin(f):
+    """Decorator to require admin authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('admin'):
+            return jsonify({'error': 'Admin authentication required'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+def update_upload_stats(file_size):
+    """Update upload statistics"""
+    try:
+        today = datetime.utcnow().date().isoformat()
+        
+        visitor_stats['upload_stats']['total_uploads'] += 1
+        visitor_stats['upload_stats']['total_size'] += file_size
+        
+        if today not in visitor_stats['upload_stats']['uploads_by_date']:
+            visitor_stats['upload_stats']['uploads_by_date'][today] = {'count': 0, 'size': 0}
+        visitor_stats['upload_stats']['uploads_by_date'][today]['count'] += 1
+        visitor_stats['upload_stats']['uploads_by_date'][today]['size'] += file_size
+        
+    except Exception as e:
+        logging.error(f"Upload stats error: {str(e)}")
+
+def update_download_stats():
+    """Update download statistics"""
+    try:
+        today = datetime.utcnow().date().isoformat()
+        
+        visitor_stats['download_stats']['total_downloads'] += 1
+        
+        if today not in visitor_stats['download_stats']['downloads_by_date']:
+            visitor_stats['download_stats']['downloads_by_date'][today] = 0
+        visitor_stats['download_stats']['downloads_by_date'][today] += 1
+        
+    except Exception as e:
+        logging.error(f"Download stats error: {str(e)}")
+
+def verify_admin_password(password, stored_hash):
+    """Verify admin password against stored hash"""
+    try:
+        if not stored_hash or ':' not in stored_hash:
+            return False
+        
+        salt, hash_value = stored_hash.split(':', 1)
+        hash_obj = hmac.new(salt.encode(), password.encode(), hashlib.sha256)
+        return hmac.compare_digest(hash_obj.hexdigest(), hash_value)
+    except Exception:
+        return False
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    """Upload and store an encrypted file"""
+    """Upload and encrypt a file"""
+    track_visitor()  # Track visitor
+    
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
@@ -526,10 +633,12 @@ def upload_file():
         # Store metadata in storage backend
         storage_backend.store_file(f"{file_id}.meta", json.dumps(metadata).encode('utf-8'))
 
+        # Update upload statistics
+        update_upload_stats(len(file_data))
+
         logging.info(f"File uploaded successfully: {file_id} (share_id: {share_id})")
         
         return jsonify({
-            'success': True,
             'file_id': file_id,
             'share_id': share_id,
             'filename': file.filename,
@@ -544,6 +653,8 @@ def upload_file():
 @app.route('/api/files', methods=['GET'])
 def list_files():
     """List uploaded files"""
+    track_visitor()  # Track visitor
+    
     try:
         files = []
         for file_id, metadata in file_metadata.items():
@@ -577,6 +688,8 @@ def list_files():
 @app.route('/api/files/<file_id>', methods=['GET'])
 def download_file(file_id):
     """Download a file by ID (supports both UUID and share_id)"""
+    track_visitor()  # Track visitor
+    
     try:
         # Check if file_id is a share_id (8 characters, alphanumeric)
         if len(file_id) == 8 and file_id.isalnum():
@@ -606,6 +719,9 @@ def download_file(file_id):
         response.headers['Content-Type'] = 'application/octet-stream'
         response.headers['Content-Disposition'] = f'attachment; filename="{file_meta["filename"]}.encrypted"'
         response.headers['Content-Length'] = len(file_data)
+        
+        # Update download statistics
+        update_download_stats()
         
         return response
 
@@ -648,6 +764,8 @@ def health_check():
 @app.route('/api/search/<share_id>', methods=['GET'])
 def search_file(share_id):
     """Search for a file by share ID and return metadata"""
+    track_visitor()  # Track visitor
+    
     try:
         # Validate share_id format
         if len(share_id) != 8 or not share_id.isalnum():
@@ -675,6 +793,74 @@ def search_file(share_id):
     except Exception as e:
         logging.error(f"Search error: {str(e)}")
         return jsonify({'error': f'Search failed: {str(e)}'}), 500
+
+@app.route('/api/admin/login', methods=['POST'])
+def admin_login():
+    """Admin login endpoint"""
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        
+        if username != ADMIN_USERNAME or not verify_admin_password(password, ADMIN_PASSWORD_HASH):
+            return jsonify({'error': 'Invalid username or password'}), 401
+        
+        session['admin'] = True
+        session['admin_login_time'] = datetime.utcnow().isoformat()
+        return jsonify({'message': 'Admin login successful'}), 200
+    except Exception as e:
+        logging.error(f"Login error: {str(e)}")
+        return jsonify({'error': f'Login failed: {str(e)}'}), 500
+
+@app.route('/api/admin/logout', methods=['POST'])
+@require_admin
+def admin_logout():
+    """Admin logout endpoint"""
+    try:
+        session.clear()
+        return jsonify({'message': 'Admin logout successful'}), 200
+    except Exception as e:
+        logging.error(f"Logout error: {str(e)}")
+        return jsonify({'error': f'Logout failed: {str(e)}'}), 500
+
+@app.route('/api/admin/stats', methods=['GET'])
+@require_admin
+def get_admin_stats():
+    """Admin stats endpoint"""
+    try:
+        return jsonify({
+            'total_visits': visitor_stats['total_visits'],
+            'unique_visitors': len(visitor_stats['unique_visitors']),
+            'daily_visits': visitor_stats['daily_visits'],
+            'page_views': visitor_stats['page_views'],
+            'upload_stats': visitor_stats['upload_stats'],
+            'download_stats': visitor_stats['download_stats']
+        }), 200
+    except Exception as e:
+        logging.error(f"Stats error: {str(e)}")
+        return jsonify({'error': f'Stats failed: {str(e)}'}), 500
+
+@app.route('/api/admin/files', methods=['GET'])
+@require_admin
+def get_admin_files():
+    """Admin endpoint to get all files with metadata"""
+    try:
+        files = []
+        for file_id, metadata in file_metadata.items():
+            files.append({
+                'id': file_id,
+                'share_id': metadata.get('share_id'),
+                'filename': metadata['filename'],
+                'size': metadata['size'],
+                'upload_date': metadata['upload_date'],
+                'encrypted': metadata.get('encrypted', False),
+                'mime_type': metadata.get('mime_type', 'unknown')
+            })
+        
+        return jsonify({'files': files}), 200
+    except Exception as e:
+        logging.error(f"Admin files error: {str(e)}")
+        return jsonify({'error': f'Failed to get files: {str(e)}'}), 500
 
 if __name__ == '__main__':
     # Configure logging
