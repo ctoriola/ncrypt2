@@ -22,8 +22,9 @@ export function FileSearch() {
       return;
     }
 
-    // Validate share ID format (8 characters, alphanumeric)
-    if (!/^[A-Z0-9]{8}$/.test(shareId.trim().toUpperCase())) {
+    // Validate share ID format (8 characters, alphanumeric) - case insensitive
+    const normalizedShareId = shareId.trim().toUpperCase();
+    if (!/^[A-Z0-9]{8}$/.test(normalizedShareId)) {
       toast.error('Share ID must be 8 characters long and contain only letters and numbers');
       return;
     }
@@ -33,7 +34,7 @@ export function FileSearch() {
       setError('');
       setFileInfo(null);
 
-      const response = await fetch(`${API_BASE_URL}/api/search/${shareId.trim().toUpperCase()}`);
+      const response = await fetch(`${API_BASE_URL}/api/search/${normalizedShareId}`);
       
       if (!response.ok) {
         if (response.status === 404) {
@@ -141,7 +142,7 @@ export function FileSearch() {
             <input
               type="text"
               value={shareId}
-              onChange={(e) => setShareId(e.target.value.toUpperCase())}
+              onChange={(e) => setShareId(e.target.value)}
               placeholder="Enter 8-character share ID (e.g., ABC12345)"
               className="share-id-input"
               maxLength={8}
