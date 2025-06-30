@@ -579,6 +579,8 @@ def require_firebase_admin(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         logging.info(f"Firebase admin endpoint accessed: {request.endpoint}")
+        logging.info(f"FIREBASE_AVAILABLE: {FIREBASE_AVAILABLE}")
+        logging.info(f"auth module available: {auth is not None}")
         
         # Get Authorization header
         auth_header = request.headers.get('Authorization')
@@ -587,11 +589,17 @@ def require_firebase_admin(f):
             return jsonify({'error': 'Firebase authentication required'}), 401
         
         id_token = auth_header.split('Bearer ')[1]
+        logging.info(f"Received token length: {len(id_token)}")
+        logging.info(f"Token starts with: {id_token[:20]}...")
         
         try:
             if not FIREBASE_AVAILABLE or not auth:
                 logging.error("Firebase Admin SDK not available")
+                logging.error(f"FIREBASE_AVAILABLE: {FIREBASE_AVAILABLE}")
+                logging.error(f"auth module: {auth}")
                 return jsonify({'error': 'Firebase authentication not configured'}), 500
+            
+            logging.info("Attempting to verify Firebase ID token...")
             
             # Verify the Firebase ID token
             decoded_token = auth.verify_id_token(id_token)
@@ -599,6 +607,7 @@ def require_firebase_admin(f):
             email = decoded_token.get('email', '')
             
             logging.info(f"Firebase authentication successful for user: {email} ({user_id})")
+            logging.info(f"Token claims: {list(decoded_token.keys())}")
             
             # Store user info in request context for use in the endpoint
             setattr(request, 'firebase_user', {
@@ -610,6 +619,8 @@ def require_firebase_admin(f):
             
         except Exception as e:
             logging.error(f"Firebase authentication failed: {str(e)}")
+            logging.error(f"Exception type: {type(e).__name__}")
+            logging.error(f"Exception details: {e}")
             return jsonify({'error': 'Invalid Firebase token'}), 401
     
     return decorated_function
@@ -1026,6 +1037,30 @@ def track_page_visit():
     except Exception as e:
         logging.error(f"Page tracking error: {str(e)}")
         return jsonify({'error': 'Failed to track page visit'}), 500
+
+@app.route('/api/admin/test-firebase', methods=['GET'])
+def test_firebase_config():
+    """Test endpoint to check Firebase configuration"""
+    try:
+        logging.info("Testing Firebase configuration...")
+        
+        config_status = {
+            'firebase_available': FIREBASE_AVAILABLE,
+            'auth_module_available': auth is not None,
+            'firebase_admin_imported': firebase_admin is not None,
+            'credentials_path': os.getenv('FIREBASE_CREDENTIALS_PATH'),
+            'credentials_file_exists': os.path.exists(os.getenv('FIREBASE_CREDENTIALS_PATH', '')) if os.getenv('FIREBASE_CREDENTIALS_PATH') else False
+        }
+        
+        logging.info(f"Firebase config status: {config_status}")
+        
+        return jsonify({
+            'firebase_config': config_status,
+            'message': 'Firebase configuration test completed'
+        }), 200
+    except Exception as e:
+        logging.error(f"Firebase config test error: {str(e)}")
+        return jsonify({'error': f'Firebase config test failed: {str(e)}'}), 500
 
 @app.route('/api/admin/test-session', methods=['GET'])
 def test_session():
