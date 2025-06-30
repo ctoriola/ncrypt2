@@ -23,8 +23,8 @@ export function FileSearch() {
     }
 
     // Validate share ID format (8 characters, alphanumeric) - case insensitive
-    const normalizedShareId = shareId.trim().toUpperCase();
-    if (!/^[A-Z0-9]{8}$/.test(normalizedShareId)) {
+    const normalizedShareId = shareId.trim();
+    if (!/^[A-Za-z0-9]{8}$/.test(normalizedShareId)) {
       toast.error('Share ID must be 8 characters long and contain only letters and numbers');
       return;
     }
@@ -143,10 +143,10 @@ export function FileSearch() {
               type="text"
               value={shareId}
               onChange={(e) => setShareId(e.target.value)}
-              placeholder="Enter 8-character share ID (e.g., ABC12345)"
+              placeholder="Enter 8-character share ID (e.g., AbC12345)"
               className="share-id-input"
               maxLength={8}
-              pattern="[A-Z0-9]{8}"
+              pattern="[A-Za-z0-9]{8}"
               title="Share ID must be 8 characters long and contain only letters and numbers"
             />
             <button
