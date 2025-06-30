@@ -33,18 +33,6 @@ try:
     FIREBASE_AVAILABLE = True
     logger.info("Firebase Admin SDK imported successfully")
     
-    # Create Firebase credentials file from environment variable (for Railway)
-    firebase_creds_json = os.getenv('FIREBASE_CREDENTIALS')
-    if firebase_creds_json:
-        try:
-            import json
-            creds_path = os.getenv('FIREBASE_CREDENTIALS_PATH', '/tmp/firebase-credentials.json')
-            with open(creds_path, 'w') as f:
-                json.dump(json.loads(firebase_creds_json), f)
-            logger.info(f"Created Firebase credentials file from environment variable: {creds_path}")
-        except Exception as e:
-            logger.error(f"Failed to create Firebase credentials file: {e}")
-    
     # Initialize Firebase Admin SDK
     firebase_credentials_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
     if firebase_credentials_path and os.path.exists(firebase_credentials_path):
@@ -591,8 +579,6 @@ def require_firebase_admin(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         logging.info(f"Firebase admin endpoint accessed: {request.endpoint}")
-        logging.info(f"FIREBASE_AVAILABLE: {FIREBASE_AVAILABLE}")
-        logging.info(f"auth module available: {auth is not None}")
         
         # Get Authorization header
         auth_header = request.headers.get('Authorization')
@@ -601,17 +587,11 @@ def require_firebase_admin(f):
             return jsonify({'error': 'Firebase authentication required'}), 401
         
         id_token = auth_header.split('Bearer ')[1]
-        logging.info(f"Received token length: {len(id_token)}")
-        logging.info(f"Token starts with: {id_token[:20]}...")
         
         try:
             if not FIREBASE_AVAILABLE or not auth:
                 logging.error("Firebase Admin SDK not available")
-                logging.error(f"FIREBASE_AVAILABLE: {FIREBASE_AVAILABLE}")
-                logging.error(f"auth module: {auth}")
                 return jsonify({'error': 'Firebase authentication not configured'}), 500
-            
-            logging.info("Attempting to verify Firebase ID token...")
             
             # Verify the Firebase ID token
             decoded_token = auth.verify_id_token(id_token)
@@ -619,7 +599,6 @@ def require_firebase_admin(f):
             email = decoded_token.get('email', '')
             
             logging.info(f"Firebase authentication successful for user: {email} ({user_id})")
-            logging.info(f"Token claims: {list(decoded_token.keys())}")
             
             # Store user info in request context for use in the endpoint
             setattr(request, 'firebase_user', {
@@ -631,8 +610,6 @@ def require_firebase_admin(f):
             
         except Exception as e:
             logging.error(f"Firebase authentication failed: {str(e)}")
-            logging.error(f"Exception type: {type(e).__name__}")
-            logging.error(f"Exception details: {e}")
             return jsonify({'error': 'Invalid Firebase token'}), 401
     
     return decorated_function
@@ -875,7 +852,6 @@ def delete_file(file_id):
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
-    track_visitor()  # Track visitor
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.utcnow().isoformat(),
@@ -919,7 +895,6 @@ def search_file(share_id):
 @app.route('/api/admin/login', methods=['POST'])
 def admin_login():
     """Admin login endpoint"""
-    track_visitor()  # Track visitor
     try:
         data = request.get_json()
         username = data.get('username')
@@ -954,7 +929,6 @@ def admin_login():
 @require_admin
 def admin_logout():
     """Admin logout endpoint"""
-    track_visitor()  # Track visitor
     try:
         session.clear()
         return jsonify({'message': 'Admin logout successful'}), 200
@@ -966,7 +940,6 @@ def admin_logout():
 @require_firebase_admin
 def get_admin_stats():
     """Admin stats endpoint"""
-    track_visitor()  # Track visitor
     try:
         logging.info(f"Admin stats request from {request.remote_addr}")
         logging.info(f"Firebase user: {getattr(request, 'firebase_user', 'Not set')}")
@@ -990,7 +963,6 @@ def get_admin_stats():
 @require_firebase_admin
 def get_admin_files():
     """Admin endpoint to get all files with metadata"""
-    track_visitor()  # Track visitor
     try:
         logging.info(f"Admin files request from {request.remote_addr}")
         logging.info(f"Firebase user: {getattr(request, 'firebase_user', 'Not set')}")
@@ -1013,126 +985,9 @@ def get_admin_files():
         logging.error(f"Admin files error: {str(e)}")
         return jsonify({'error': f'Failed to get files: {str(e)}'}), 500
 
-@app.route('/api/track-page', methods=['POST'])
-def track_page_visit():
-    """Track frontend page visits"""
-    try:
-        data = request.get_json()
-        page = data.get('page', 'unknown')
-        
-        # Get visitor IP
-        visitor_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-        if visitor_ip and ',' in visitor_ip:
-            visitor_ip = visitor_ip.split(',')[0].strip()
-        
-        # Get current date
-        today = datetime.utcnow().date().isoformat()
-        
-        # Update visitor stats
-        visitor_stats['total_visits'] += 1
-        if visitor_ip:
-            visitor_stats['unique_visitors'].add(visitor_ip)
-        
-        # Track daily visits
-        if today not in visitor_stats['daily_visits']:
-            visitor_stats['daily_visits'][today] = 0
-        visitor_stats['daily_visits'][today] += 1
-        
-        # Track page views
-        if page not in visitor_stats['page_views']:
-            visitor_stats['page_views'][page] = 0
-        visitor_stats['page_views'][page] += 1
-        
-        logging.info(f"Page visit tracked: {page} from {visitor_ip}")
-        
-        return jsonify({'message': 'Page visit tracked'}), 200
-    except Exception as e:
-        logging.error(f"Page tracking error: {str(e)}")
-        return jsonify({'error': 'Failed to track page visit'}), 500
-
-@app.route('/api/admin/test-firebase', methods=['GET'])
-def test_firebase_config():
-    """Test endpoint to check Firebase configuration"""
-    try:
-        logging.info("Testing Firebase configuration...")
-        
-        config_status = {
-            'firebase_available': FIREBASE_AVAILABLE,
-            'auth_module_available': auth is not None,
-            'firebase_admin_imported': firebase_admin is not None,
-            'credentials_path': os.getenv('FIREBASE_CREDENTIALS_PATH'),
-            'credentials_file_exists': os.path.exists(os.getenv('FIREBASE_CREDENTIALS_PATH', '')) if os.getenv('FIREBASE_CREDENTIALS_PATH') else False,
-            'project_id': os.getenv('FIREBASE_PROJECT_ID'),
-            'auth_domain': os.getenv('FIREBASE_AUTH_DOMAIN')
-        }
-        
-        logging.info(f"Firebase config status: {config_status}")
-        
-        return jsonify({
-            'firebase_config': config_status,
-            'message': 'Firebase configuration test completed'
-        }), 200
-    except Exception as e:
-        logging.error(f"Firebase config test error: {str(e)}")
-        return jsonify({'error': f'Firebase config test failed: {str(e)}'}), 500
-
-@app.route('/api/admin/test-token', methods=['POST'])
-def test_firebase_token():
-    """Test endpoint to verify Firebase token without requiring authentication"""
-    try:
-        logging.info("Testing Firebase token verification...")
-        
-        data = request.get_json()
-        if not data or 'token' not in data:
-            return jsonify({'error': 'Token required'}), 400
-        
-        id_token = data['token']
-        logging.info(f"Testing token length: {len(id_token)}")
-        logging.info(f"Token starts with: {id_token[:20]}...")
-        
-        if not FIREBASE_AVAILABLE or not auth:
-            logging.error("Firebase Admin SDK not available")
-            return jsonify({'error': 'Firebase authentication not configured'}), 500
-        
-        try:
-            logging.info("Attempting to verify Firebase ID token...")
-            decoded_token = auth.verify_id_token(id_token)
-            user_id = decoded_token['uid']
-            email = decoded_token.get('email', '')
-            project_id = decoded_token.get('aud', '')
-            
-            logging.info(f"Token verification successful!")
-            logging.info(f"User: {email} ({user_id})")
-            logging.info(f"Project ID: {project_id}")
-            logging.info(f"Token claims: {list(decoded_token.keys())}")
-            
-            return jsonify({
-                'success': True,
-                'user': {
-                    'uid': user_id,
-                    'email': email
-                },
-                'project_id': project_id,
-                'token_claims': list(decoded_token.keys())
-            }), 200
-            
-        except Exception as e:
-            logging.error(f"Token verification failed: {str(e)}")
-            logging.error(f"Exception type: {type(e).__name__}")
-            return jsonify({
-                'success': False,
-                'error': str(e),
-                'error_type': type(e).__name__
-            }), 400
-            
-    except Exception as e:
-        logging.error(f"Token test error: {str(e)}")
-        return jsonify({'error': f'Token test failed: {str(e)}'}), 500
-
 @app.route('/api/admin/test-session', methods=['GET'])
 def test_session():
     """Test endpoint to check if sessions are working"""
-    track_visitor()  # Track visitor
     try:
         logging.info(f"Session test request from {request.remote_addr}")
         logging.info(f"Current session: {dict(session)}")

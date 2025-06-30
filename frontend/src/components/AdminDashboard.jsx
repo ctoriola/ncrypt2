@@ -12,50 +12,21 @@ export const AdminDashboard = ({ onLogout }) => {
   const [stats, setStats] = useState(null);
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const { currentUser, logout } = useAuth();
 
   useEffect(() => {
     if (currentUser) {
-      console.log('Current user found:', currentUser.email);
-      console.log('Firebase config check:', {
-        apiKey: import.meta.env.VITE_FIREBASE_API_KEY ? 'Set' : 'Not set',
-        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ? 'Set' : 'Not set',
-        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ? 'Set' : 'Not set',
-        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ? 'Set' : 'Not set',
-        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ? 'Set' : 'Not set',
-        appId: import.meta.env.VITE_FIREBASE_APP_ID ? 'Set' : 'Not set'
-      });
-      console.log('Firebase Project ID:', import.meta.env.VITE_FIREBASE_PROJECT_ID);
-      console.log('Firebase Auth Domain:', import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
       loadDashboardData();
-    } else {
-      console.log('No current user found');
-      setLoading(false);
     }
   }, [currentUser]);
 
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      setError(null);
       
       // Get Firebase ID token for authentication
-      let idToken;
-      try {
-        idToken = await currentUser.getIdToken(true); // Force refresh the token
-        console.log('Firebase token obtained successfully');
-        console.log('Token length:', idToken.length);
-        console.log('Token starts with:', idToken.substring(0, 20) + '...');
-        console.log('Token ends with:', '...' + idToken.substring(idToken.length - 20));
-      } catch (tokenError) {
-        console.error('Failed to get Firebase token:', tokenError);
-        setError('Authentication failed. Please log in again.');
-        toast.error('Authentication failed. Please log in again.');
-        await logout();
-        return;
-      }
+      const idToken = await currentUser.getIdToken();
       
       console.log('Loading dashboard data with Firebase token...');
       
@@ -84,16 +55,7 @@ export const AdminDashboard = ({ onLogout }) => {
       } else {
         const errorData = await statsResponse.text();
         console.error('Stats error response:', errorData);
-        
-        if (statsResponse.status === 401) {
-          setError('Authentication failed. Please log in again.');
-          toast.error('Authentication failed. Please log in again.');
-          await logout();
-          return;
-        } else {
-          setError('Failed to load statistics');
-          toast.error('Failed to load statistics');
-        }
+        toast.error('Failed to load statistics');
       }
 
       if (filesResponse.ok) {
@@ -102,28 +64,14 @@ export const AdminDashboard = ({ onLogout }) => {
       } else {
         const errorData = await filesResponse.text();
         console.error('Files error response:', errorData);
-        
-        if (filesResponse.status === 401) {
-          setError('Authentication failed. Please log in again.');
-          toast.error('Authentication failed. Please log in again.');
-          await logout();
-          return;
-        } else {
-          setError('Failed to load files');
-          toast.error('Failed to load files');
-        }
+        toast.error('Failed to load files');
       }
     } catch (error) {
       console.error('Dashboard data error:', error);
-      setError('Failed to load dashboard data');
       toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleRetry = () => {
-    loadDashboardData();
   };
 
   const handleLogout = async () => {
@@ -163,41 +111,6 @@ export const AdminDashboard = ({ onLogout }) => {
             <path d="M21 12a9 9 0 11-6.219-8.56"></path>
           </svg>
           <p>Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="admin-dashboard">
-        <div className="error-container">
-          <div className="error-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="15" y1="9" x2="9" y2="15"></line>
-              <line x1="9" y1="9" x2="15" y2="15"></line>
-            </svg>
-          </div>
-          <h2>Dashboard Error</h2>
-          <p>{error}</p>
-          <div className="error-actions">
-            <button onClick={handleRetry} className="retry-btn">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M1 4v6h6"></path>
-                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-              </svg>
-              Retry
-            </button>
-            <button onClick={handleLogout} className="logout-btn">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                <polyline points="16,17 21,12 16,7"></polyline>
-                <line x1="21" y1="12" x2="9" y2="12"></line>
-              </svg>
-              Logout
-            </button>
-          </div>
         </div>
       </div>
     );

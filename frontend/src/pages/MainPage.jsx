@@ -6,7 +6,6 @@ import { FileSearch } from '../components/FileSearch';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
 import { ToastContainer, toast } from 'react-toastify';
-import { usePageTracking } from '../hooks/usePageTracking';
 import 'react-toastify/dist/ReactToastify.css';
 import './MainPage.css';
 
@@ -20,9 +19,6 @@ export function MainPage() {
   const [activeTab, setActiveTab] = useState('upload'); // 'upload', 'decrypt', or 'search'
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  // Track page visits
-  usePageTracking();
 
   useEffect(() => {
     // Check for saved dark mode preference

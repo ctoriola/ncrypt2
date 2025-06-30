@@ -1,16 +1,11 @@
 import React from 'react';
 import { AdminLogin } from '../components/AdminLogin';
 import { AdminDashboard } from '../components/AdminDashboard';
-import { FirebaseTest } from '../components/FirebaseTest';
 import { useAuth } from '../contexts/AuthContext';
-import { usePageTracking } from '../hooks/usePageTracking';
 import './AdminPage.css';
 
 export function AdminPage() {
   const { currentUser } = useAuth();
-
-  // Track page visits
-  usePageTracking();
 
   const handleAdminLoginSuccess = () => {
     // Login success is handled by the AuthContext
@@ -32,10 +27,7 @@ export function AdminPage() {
 
         <div className="admin-page-content">
           {currentUser ? (
-            <>
-              <FirebaseTest />
-              <AdminDashboard onLogout={handleAdminLogout} />
-            </>
+            <AdminDashboard onLogout={handleAdminLogout} />
           ) : (
             <AdminLogin onLoginSuccess={handleAdminLoginSuccess} />
           )}
