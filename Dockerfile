@@ -15,11 +15,8 @@ COPY . .
 # Create uploads directory
 RUN mkdir -p uploads
 
-# Expose port
-EXPOSE 8000
+# Expose port (will be overridden by Railway)
+EXPOSE 5000
 
-# Set environment variable
-ENV PORT=8000
-
-# Start the application
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "server:app"] 
+# Start the application using Railway's PORT environment variable
+CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "1", "server:app"] 

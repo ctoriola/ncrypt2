@@ -17,31 +17,41 @@ from functools import wraps
 import hashlib
 import hmac
 
+# Configure basic logging first
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+logger.info("Starting NCryp server initialization...")
+
 # Firebase Admin SDK
 try:
     import firebase_admin
     from firebase_admin import credentials, auth
     FIREBASE_AVAILABLE = True
+    logger.info("Firebase Admin SDK imported successfully")
     
     # Initialize Firebase Admin SDK
     firebase_credentials_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
     if firebase_credentials_path and os.path.exists(firebase_credentials_path):
         cred = credentials.Certificate(firebase_credentials_path)
         firebase_admin.initialize_app(cred)
-        logging.info("Firebase Admin SDK initialized with service account")
+        logger.info("Firebase Admin SDK initialized with service account")
     else:
         # Try to initialize with default credentials (for Railway/Heroku)
         try:
             firebase_admin.initialize_app()
-            logging.info("Firebase Admin SDK initialized with default credentials")
+            logger.info("Firebase Admin SDK initialized with default credentials")
         except Exception as e:
-            logging.warning(f"Firebase Admin SDK initialization failed: {e}")
+            logger.warning(f"Firebase Admin SDK initialization failed: {e}")
             FIREBASE_AVAILABLE = False
 except ImportError:
     firebase_admin = None
     auth = None
     FIREBASE_AVAILABLE = False
-    logging.warning("Firebase Admin SDK not available - Firebase authentication disabled")
+    logger.warning("Firebase Admin SDK not available - Firebase authentication disabled")
 
 # Optional ClamAV import
 try:
@@ -591,10 +601,10 @@ def require_firebase_admin(f):
             logging.info(f"Firebase authentication successful for user: {email} ({user_id})")
             
             # Store user info in request context for use in the endpoint
-            request.firebase_user = {
+            setattr(request, 'firebase_user', {
                 'uid': user_id,
                 'email': email
-            }
+            })
             
             return f(*args, **kwargs)
             
@@ -1017,3 +1027,9 @@ if __name__ == '__main__':
     logging.info(f"Debug mode: {debug}")
     
     app.run(debug=debug, host=host, port=port)
+else:
+    # When running with gunicorn, log initialization
+    logging.basicConfig(level=logging.INFO)
+    logging.info("NCryp server module loaded successfully")
+    logging.info(f"Storage type: {STORAGE_TYPE}")
+    logging.info(f"Firebase available: {FIREBASE_AVAILABLE}")
