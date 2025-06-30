@@ -34,7 +34,19 @@ else:
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
-CORS(app, origins=['*'], supports_credentials=True)  # Allow all origins for now, configure properly in production
+
+# Configure CORS with proper settings for admin sessions
+CORS(app, 
+     origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://127.0.0.1:3000'], 
+     supports_credentials=True,
+     allow_headers=['Content-Type', 'Authorization'],
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
+
+# Configure session settings
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=int(os.getenv('ADMIN_SESSION_TIMEOUT', 3600)))
 
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_FILE_SIZE', 100 * 1024 * 1024))  # 100MB max file size
@@ -805,8 +817,11 @@ def admin_login():
         if username != ADMIN_USERNAME or not verify_admin_password(password, ADMIN_PASSWORD_HASH):
             return jsonify({'error': 'Invalid username or password'}), 401
         
+        session.permanent = True
         session['admin'] = True
         session['admin_login_time'] = datetime.utcnow().isoformat()
+        
+        logging.info(f"Admin login successful for user: {username}")
         return jsonify({'message': 'Admin login successful'}), 200
     except Exception as e:
         logging.error(f"Login error: {str(e)}")
@@ -828,14 +843,19 @@ def admin_logout():
 def get_admin_stats():
     """Admin stats endpoint"""
     try:
-        return jsonify({
+        logging.info(f"Admin stats requested by session: {session}")
+        
+        stats_data = {
             'total_visits': visitor_stats['total_visits'],
             'unique_visitors': len(visitor_stats['unique_visitors']),
             'daily_visits': visitor_stats['daily_visits'],
             'page_views': visitor_stats['page_views'],
             'upload_stats': visitor_stats['upload_stats'],
             'download_stats': visitor_stats['download_stats']
-        }), 200
+        }
+        
+        logging.info(f"Returning stats: {stats_data}")
+        return jsonify(stats_data), 200
     except Exception as e:
         logging.error(f"Stats error: {str(e)}")
         return jsonify({'error': f'Stats failed: {str(e)}'}), 500
