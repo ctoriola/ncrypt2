@@ -23,8 +23,7 @@ export default defineConfig({
         manualChunks: {
           vendor: ['react', 'react-dom'],
           router: ['react-router-dom'],
-          ui: ['react-toastify', 'react-dropzone'],
-          utils: ['axios']
+          ui: ['react-toastify', 'react-dropzone']
         },
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js',
