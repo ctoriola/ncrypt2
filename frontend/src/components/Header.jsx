@@ -13,7 +13,7 @@ export function Header({ darkMode, onToggleDarkMode }) {
                 <path d="M9 12l2 2 4-4"></path>
               </svg>
             </div>
-            <h1>NCryp</h1>
+            <h1>NCrypt</h1>
             <span className="tagline">Secure File Storage</span>
           </div>
 
