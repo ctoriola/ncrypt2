@@ -852,6 +852,7 @@ def delete_file(file_id):
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
+    track_visitor()  # Track visitor
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.utcnow().isoformat(),
@@ -895,6 +896,7 @@ def search_file(share_id):
 @app.route('/api/admin/login', methods=['POST'])
 def admin_login():
     """Admin login endpoint"""
+    track_visitor()  # Track visitor
     try:
         data = request.get_json()
         username = data.get('username')
@@ -929,6 +931,7 @@ def admin_login():
 @require_admin
 def admin_logout():
     """Admin logout endpoint"""
+    track_visitor()  # Track visitor
     try:
         session.clear()
         return jsonify({'message': 'Admin logout successful'}), 200
@@ -940,6 +943,7 @@ def admin_logout():
 @require_firebase_admin
 def get_admin_stats():
     """Admin stats endpoint"""
+    track_visitor()  # Track visitor
     try:
         logging.info(f"Admin stats request from {request.remote_addr}")
         logging.info(f"Firebase user: {getattr(request, 'firebase_user', 'Not set')}")
@@ -963,6 +967,7 @@ def get_admin_stats():
 @require_firebase_admin
 def get_admin_files():
     """Admin endpoint to get all files with metadata"""
+    track_visitor()  # Track visitor
     try:
         logging.info(f"Admin files request from {request.remote_addr}")
         logging.info(f"Firebase user: {getattr(request, 'firebase_user', 'Not set')}")
@@ -985,9 +990,47 @@ def get_admin_files():
         logging.error(f"Admin files error: {str(e)}")
         return jsonify({'error': f'Failed to get files: {str(e)}'}), 500
 
+@app.route('/api/track-page', methods=['POST'])
+def track_page_visit():
+    """Track frontend page visits"""
+    try:
+        data = request.get_json()
+        page = data.get('page', 'unknown')
+        
+        # Get visitor IP
+        visitor_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        if visitor_ip and ',' in visitor_ip:
+            visitor_ip = visitor_ip.split(',')[0].strip()
+        
+        # Get current date
+        today = datetime.utcnow().date().isoformat()
+        
+        # Update visitor stats
+        visitor_stats['total_visits'] += 1
+        if visitor_ip:
+            visitor_stats['unique_visitors'].add(visitor_ip)
+        
+        # Track daily visits
+        if today not in visitor_stats['daily_visits']:
+            visitor_stats['daily_visits'][today] = 0
+        visitor_stats['daily_visits'][today] += 1
+        
+        # Track page views
+        if page not in visitor_stats['page_views']:
+            visitor_stats['page_views'][page] = 0
+        visitor_stats['page_views'][page] += 1
+        
+        logging.info(f"Page visit tracked: {page} from {visitor_ip}")
+        
+        return jsonify({'message': 'Page visit tracked'}), 200
+    except Exception as e:
+        logging.error(f"Page tracking error: {str(e)}")
+        return jsonify({'error': 'Failed to track page visit'}), 500
+
 @app.route('/api/admin/test-session', methods=['GET'])
 def test_session():
     """Test endpoint to check if sessions are working"""
+    track_visitor()  # Track visitor
     try:
         logging.info(f"Session test request from {request.remote_addr}")
         logging.info(f"Current session: {dict(session)}")
