@@ -36,10 +36,11 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 
 # Session configuration for production
-app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to False for Railway (they handle HTTPS)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=int(os.getenv('ADMIN_SESSION_TIMEOUT', 3600)))
+app.config['SESSION_COOKIE_DOMAIN'] = None  # Let Flask set the domain automatically
 
 # CORS Configuration for production
 CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*')
@@ -830,13 +831,20 @@ def admin_login():
             logging.warning(f"Admin login failed for {request.remote_addr}")
             return jsonify({'error': 'Invalid username or password'}), 401
         
+        # Make session permanent and set admin flag
+        session.permanent = True
         session['admin'] = True
         session['admin_login_time'] = datetime.utcnow().isoformat()
         
         logging.info(f"Admin login successful for {request.remote_addr}")
         logging.info(f"Session after login: {dict(session)}")
+        logging.info(f"Session permanent: {session.permanent}")
         
-        return jsonify({'message': 'Admin login successful'}), 200
+        response = jsonify({'message': 'Admin login successful'})
+        response.headers['X-Session-Admin'] = 'true'
+        response.headers['X-Session-Time'] = session['admin_login_time']
+        
+        return response, 200
     except Exception as e:
         logging.error(f"Login error: {str(e)}")
         return jsonify({'error': f'Login failed: {str(e)}'}), 500

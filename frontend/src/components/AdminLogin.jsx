@@ -22,6 +22,7 @@ export const AdminLogin = ({ onLoginSuccess }) => {
     setLoading(true);
     
     try {
+      console.log('Attempting admin login...');
       const response = await fetch(`${API_BASE_URL}/api/admin/login`, {
         method: 'POST',
         headers: {
@@ -31,9 +32,21 @@ export const AdminLogin = ({ onLoginSuccess }) => {
         body: JSON.stringify({ username, password }),
       });
 
+      console.log('Login response status:', response.status);
+      console.log('Login response headers:', response.headers);
+      
       const data = await response.json();
+      console.log('Login response data:', data);
 
       if (response.ok) {
+        console.log('Login successful, checking session...');
+        // Test session immediately after login
+        const sessionTest = await fetch(`${API_BASE_URL}/api/admin/test-session`, {
+          credentials: 'include'
+        });
+        const sessionData = await sessionTest.json();
+        console.log('Session test after login:', sessionData);
+        
         toast.success('Admin login successful!');
         onLoginSuccess();
       } else {
