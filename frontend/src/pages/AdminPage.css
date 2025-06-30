@@ -1,0 +1,94 @@
+.admin-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.admin-page-container {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  padding: 40px;
+  max-width: 1200px;
+  width: 100%;
+  min-height: 600px;
+}
+
+.admin-page-header {
+  text-align: center;
+  margin-bottom: 40px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.admin-page-header h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #2d3748;
+  margin: 0 0 10px 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.admin-page-header p {
+  font-size: 1.1rem;
+  color: #718096;
+  margin: 0;
+}
+
+.admin-page-content {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* Dark mode styles */
+.dark-mode .admin-page {
+  background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+}
+
+.dark-mode .admin-page-container {
+  background: rgba(26, 32, 44, 0.95);
+  border: 1px solid #4a5568;
+}
+
+.dark-mode .admin-page-header h1 {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dark-mode .admin-page-header p {
+  color: #a0aec0;
+}
+
+.dark-mode .admin-page-header {
+  border-bottom-color: #4a5568;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .admin-page {
+    padding: 10px;
+  }
+  
+  .admin-page-container {
+    padding: 20px;
+    min-height: 500px;
+  }
+  
+  .admin-page-header h1 {
+    font-size: 2rem;
+  }
+  
+  .admin-page-header p {
+    font-size: 1rem;
+  }
+} 

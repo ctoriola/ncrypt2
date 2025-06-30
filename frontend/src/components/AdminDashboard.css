@@ -40,6 +40,35 @@
   font-size: 1rem;
 }
 
+.admin-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--surface-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.back-btn:hover {
+  background: var(--hover-bg);
+  transform: translateY(-1px);
+  text-decoration: none;
+  color: var(--text-color);
+}
+
 .logout-btn {
   display: flex;
   align-items: center;
@@ -430,6 +459,18 @@
     flex-direction: column;
     gap: 1rem;
     text-align: center;
+  }
+  
+  .admin-header-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+  }
+  
+  .back-btn,
+  .logout-btn {
+    width: 100%;
+    justify-content: center;
   }
 
   .admin-nav {

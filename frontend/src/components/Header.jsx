@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import './Header.css';
 
 export function Header({ darkMode, onToggleDarkMode }) {
@@ -7,14 +8,16 @@ export function Header({ darkMode, onToggleDarkMode }) {
       <div className="container">
         <div className="header-content">
           <div className="logo">
-            <div className="logo-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                <path d="M9 12l2 2 4-4"></path>
-              </svg>
-            </div>
-            <h1>NCrypt</h1>
-            <span className="tagline">Secure File Storage</span>
+            <Link to="/" className="logo-link">
+              <div className="logo-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  <path d="M9 12l2 2 4-4"></path>
+                </svg>
+              </div>
+              <h1>NCrypt</h1>
+              <span className="tagline">Secure File Storage</span>
+            </Link>
           </div>
 
           <nav className="nav">
@@ -22,6 +25,7 @@ export function Header({ darkMode, onToggleDarkMode }) {
               <li><a href="#upload" className="nav-link">Upload</a></li>
               <li><a href="#files" className="nav-link">Files</a></li>
               <li><a href="#about" className="nav-link">About</a></li>
+              <li><Link to="/admin" className="nav-link admin-link">Admin</Link></li>
             </ul>
           </nav>
 
