@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { toast } from 'react-toastify';
 import './SecureUploader.css';
@@ -8,51 +8,92 @@ const API_BASE_URL = import.meta.env.VITE_API_URL
   ? (import.meta.env.VITE_API_URL.startsWith('http') ? import.meta.env.VITE_API_URL : `https://${import.meta.env.VITE_API_URL}`)
   : 'https://web-production-5d61.up.railway.app';
 
-export function SecureUploader({ onUploadComplete }) {
+// File type validation
+const ACCEPTED_FILE_TYPES = {
+  'application/pdf': ['.pdf'],
+  'text/plain': ['.txt'],
+  'image/*': ['.jpg', '.jpeg', '.png', '.gif'],
+  'application/msword': ['.doc'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  'application/vnd.ms-excel': ['.xls'],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+  'text/csv': ['.csv'],
+  'application/zip': ['.zip'],
+  'application/x-rar-compressed': ['.rar']
+};
+
+// Constants
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+const MIN_PASSPHRASE_LENGTH = 8;
+
+export const SecureUploader = React.memo(({ onUploadComplete }) => {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentFile, setCurrentFile] = useState(null);
   const workerRef = useRef(null);
 
-  const onDrop = useCallback(async (acceptedFiles) => {
-    if (acceptedFiles.length === 0) return;
-
-    const file = acceptedFiles[0];
-    
-    // Validate file size (100MB limit)
-    if (file.size > 100 * 1024 * 1024) {
-      toast.error('File size must be less than 100MB');
-      return;
-    }
-
-    // Get passphrase from user
-    const passphrase = prompt('Enter a secure passphrase for encryption:');
-    if (!passphrase || passphrase.length < 8) {
-      toast.error('Passphrase must be at least 8 characters long');
-      return;
-    }
-
-    await handleFileUpload(file, passphrase);
+  // Memoized file size formatter
+  const formatFileSize = useCallback((bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }, []);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'application/pdf': ['.pdf'],
-      'text/plain': ['.txt'],
-      'image/*': ['.jpg', '.jpeg', '.png', '.gif'],
-      'application/msword': ['.doc'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'application/vnd.ms-excel': ['.xls'],
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'text/csv': ['.csv'],
-      'application/zip': ['.zip'],
-      'application/x-rar-compressed': ['.rar']
-    },
-    multiple: false
-  });
+  // Memoized encryption function
+  const encryptFile = useCallback(async (file, passphrase) => {
+    try {
+      // Generate salt and derive key
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const baseKey = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(passphrase),
+        { name: "PBKDF2" },
+        false,
+        ["deriveKey"]
+      );
 
-  const handleFileUpload = async (file, passphrase) => {
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: salt,
+          iterations: 100000,
+          hash: "SHA-256"
+        },
+        baseKey,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt"]
+      );
+
+      // Read file data
+      const fileBuffer = await file.arrayBuffer();
+      
+      // Generate IV
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      
+      // Encrypt file
+      const encrypted = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        fileBuffer
+      );
+
+      // Combine salt + iv + encrypted data
+      const combined = new Uint8Array(salt.length + iv.length + encrypted.byteLength);
+      combined.set(salt, 0);
+      combined.set(iv, salt.length);
+      combined.set(new Uint8Array(encrypted), salt.length + iv.length);
+
+      return new Blob([combined], { type: 'application/octet-stream' });
+    } catch (error) {
+      throw new Error(`Encryption failed: ${error.message}`);
+    }
+  }, []);
+
+  // Memoized file upload handler
+  const handleFileUpload = useCallback(async (file, passphrase) => {
     try {
       setUploading(true);
       setProgress(0);
@@ -111,72 +152,51 @@ export function SecureUploader({ onUploadComplete }) {
       setCurrentFile(null);
       toast.error(`Upload failed: ${error.message}`);
     }
-  };
+  }, [encryptFile, onUploadComplete]);
 
-  const encryptFile = async (file, passphrase) => {
-    try {
-      // Generate salt and derive key
-      const salt = crypto.getRandomValues(new Uint8Array(16));
-      const baseKey = await crypto.subtle.importKey(
-        "raw",
-        new TextEncoder().encode(passphrase),
-        { name: "PBKDF2" },
-        false,
-        ["deriveKey"]
-      );
+  // Memoized drop handler
+  const onDrop = useCallback(async (acceptedFiles) => {
+    if (acceptedFiles.length === 0) return;
 
-      const key = await crypto.subtle.deriveKey(
-        {
-          name: "PBKDF2",
-          salt: salt,
-          iterations: 100000,
-          hash: "SHA-256"
-        },
-        baseKey,
-        { name: "AES-GCM", length: 256 },
-        false,
-        ["encrypt"]
-      );
-
-      // Read file data
-      const fileBuffer = await file.arrayBuffer();
-      
-      // Generate IV
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      
-      // Encrypt file
-      const encrypted = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv: iv },
-        key,
-        fileBuffer
-      );
-
-      // Combine salt + iv + encrypted data
-      const combined = new Uint8Array(salt.length + iv.length + encrypted.byteLength);
-      combined.set(salt, 0);
-      combined.set(iv, salt.length);
-      combined.set(new Uint8Array(encrypted), salt.length + iv.length);
-
-      return new Blob([combined], { type: 'application/octet-stream' });
-    } catch (error) {
-      throw new Error(`Encryption failed: ${error.message}`);
+    const file = acceptedFiles[0];
+    
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(`File size must be less than ${formatFileSize(MAX_FILE_SIZE)}`);
+      return;
     }
-  };
 
-  const cancelUpload = () => {
+    // Get passphrase from user
+    const passphrase = prompt('Enter a secure passphrase for encryption:');
+    if (!passphrase || passphrase.length < MIN_PASSPHRASE_LENGTH) {
+      toast.error(`Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters long`);
+      return;
+    }
+
+    await handleFileUpload(file, passphrase);
+  }, [handleFileUpload, formatFileSize]);
+
+  // Memoized dropzone configuration
+  const dropzoneConfig = useMemo(() => ({
+    onDrop,
+    accept: ACCEPTED_FILE_TYPES,
+    multiple: false
+  }), [onDrop]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone(dropzoneConfig);
+
+  // Memoized cancel upload handler
+  const cancelUpload = useCallback(() => {
     setUploading(false);
     setProgress(0);
     setCurrentFile(null);
     toast.info('Upload cancelled');
-  };
+  }, []);
 
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+  // Memoized current file size
+  const currentFileSize = useMemo(() => {
+    return currentFile ? formatFileSize(currentFile.size) : '';
+  }, [currentFile, formatFileSize]);
 
   return (
     <div className="secure-uploader">
@@ -190,7 +210,7 @@ export function SecureUploader({ onUploadComplete }) {
           <div className="upload-progress">
             <div className="file-info">
               <h3>Uploading: {currentFile?.name}</h3>
-              <p>Size: {formatFileSize(currentFile?.size)}</p>
+              <p>Size: {currentFileSize}</p>
             </div>
             
             <div className="progress-container">
@@ -198,24 +218,17 @@ export function SecureUploader({ onUploadComplete }) {
                 <div 
                   className="progress-fill" 
                   style={{ width: `${progress}%` }}
-                ></div>
+                />
               </div>
               <span className="progress-text">{progress}%</span>
             </div>
             
-            <button 
-              type="button" 
-              className="cancel-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                cancelUpload();
-              }}
-            >
+            <button onClick={cancelUpload} className="cancel-btn">
               Cancel Upload
             </button>
           </div>
         ) : (
-          <div className="upload-prompt">
+          <div className="upload-content">
             <div className="upload-icon">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -225,9 +238,12 @@ export function SecureUploader({ onUploadComplete }) {
             </div>
             <h3>Drop your file here</h3>
             <p>or click to browse</p>
-            <div className="supported-formats">
-              <small>Supported: PDF, DOC, DOCX, XLS, XLSX, TXT, CSV, Images, ZIP, RAR</small>
-            </div>
+            <p className="file-types">
+              Supported: PDF, TXT, Images, Office docs, ZIP, RAR
+            </p>
+            <p className="file-size-limit">
+              Max size: {formatFileSize(MAX_FILE_SIZE)}
+            </p>
           </div>
         )}
       </div>
@@ -252,4 +268,6 @@ export function SecureUploader({ onUploadComplete }) {
       </div>
     </div>
   );
-} 
+});
+
+SecureUploader.displayName = 'SecureUploader'; 

@@ -13,9 +13,13 @@ from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 import logging
 from pathlib import Path
-from functools import wraps
+from functools import wraps, lru_cache
 import hashlib
 import hmac
+import time
+from threading import Lock
+import gc
+import psutil
 
 # Configure basic logging first
 logging.basicConfig(
@@ -25,6 +29,28 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 logger.info("Starting NCryp server initialization...")
+
+# Performance monitoring
+class PerformanceMonitor:
+    def __init__(self):
+        self.request_times = {}
+        self.error_counts = {}
+        self.lock = Lock()
+    
+    def start_request(self, endpoint):
+        self.request_times[endpoint] = time.time()
+    
+    def end_request(self, endpoint):
+        if endpoint in self.request_times:
+            duration = time.time() - self.request_times[endpoint]
+            logger.info(f"Request to {endpoint} took {duration:.3f}s")
+            del self.request_times[endpoint]
+    
+    def record_error(self, endpoint):
+        with self.lock:
+            self.error_counts[endpoint] = self.error_counts.get(endpoint, 0) + 1
+
+performance_monitor = PerformanceMonitor()
 
 # Firebase Admin SDK
 try:
@@ -71,6 +97,10 @@ else:
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 
+# Performance optimizations
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 year cache for static files
+app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_FILE_SIZE', 100 * 1024 * 1024))  # 100MB max file size
+
 # Session configuration for production
 app.config['SESSION_COOKIE_SECURE'] = False  # Set to False for Railway (they handle HTTPS)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -88,7 +118,6 @@ else:
     CORS(app, origins=origins, supports_credentials=True)
 
 # Configuration
-app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_FILE_SIZE', 100 * 1024 * 1024))  # 100MB max file size
 ALLOWED_MIME_TYPES = {
     'application/pdf', 'text/plain', 'image/jpeg', 'image/png', 
     'image/gif', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -101,22 +130,63 @@ ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD_HASH = os.getenv('ADMIN_PASSWORD_HASH', '')
 ADMIN_SESSION_TIMEOUT = int(os.getenv('ADMIN_SESSION_TIMEOUT', 3600))  # 1 hour
 
-# Visitor tracking storage (use Redis in production)
-visitor_stats = {
-    'total_visits': 0,
-    'unique_visitors': set(),
-    'daily_visits': {},
-    'page_views': {},
-    'upload_stats': {
-        'total_uploads': 0,
-        'total_size': 0,
-        'uploads_by_date': {}
-    },
-    'download_stats': {
-        'total_downloads': 0,
-        'downloads_by_date': {}
-    }
-}
+# Visitor tracking storage with thread safety
+class ThreadSafeVisitorStats:
+    def __init__(self):
+        self.lock = Lock()
+        self.stats = {
+            'total_visits': 0,
+            'unique_visitors': set(),
+            'daily_visits': {},
+            'page_views': {},
+            'upload_stats': {
+                'total_uploads': 0,
+                'total_size': 0,
+                'uploads_by_date': {}
+            },
+            'download_stats': {
+                'total_downloads': 0,
+                'downloads_by_date': {}
+            }
+        }
+    
+    def get_stats(self):
+        with self.lock:
+            # Convert set to list for JSON serialization
+            stats_copy = self.stats.copy()
+            stats_copy['unique_visitors'] = list(self.stats['unique_visitors'])
+            return stats_copy
+    
+    def increment_visits(self, visitor_id=None):
+        with self.lock:
+            self.stats['total_visits'] += 1
+            if visitor_id:
+                self.stats['unique_visitors'].add(visitor_id)
+    
+    def record_page_view(self, page):
+        with self.lock:
+            self.stats['page_views'][page] = self.stats['page_views'].get(page, 0) + 1
+    
+    def record_daily_visit(self, date_str):
+        with self.lock:
+            self.stats['daily_visits'][date_str] = self.stats['daily_visits'].get(date_str, 0) + 1
+    
+    def record_upload(self, file_size):
+        with self.lock:
+            self.stats['upload_stats']['total_uploads'] += 1
+            self.stats['upload_stats']['total_size'] += file_size
+            date_str = datetime.now().strftime('%Y-%m-%d')
+            self.stats['upload_stats']['uploads_by_date'][date_str] = \
+                self.stats['upload_stats']['uploads_by_date'].get(date_str, 0) + 1
+    
+    def record_download(self):
+        with self.lock:
+            self.stats['download_stats']['total_downloads'] += 1
+            date_str = datetime.now().strftime('%Y-%m-%d')
+            self.stats['download_stats']['downloads_by_date'][date_str] = \
+                self.stats['download_stats']['downloads_by_date'].get(date_str, 0) + 1
+
+visitor_stats = ThreadSafeVisitorStats()
 
 # File extension to MIME type mapping for better detection
 FILE_EXTENSIONS = {
@@ -167,13 +237,17 @@ if STORAGE_TYPE == 'local':
 else:
     LOCAL_STORAGE_PATH = './uploads'  # Default for non-local storage
 
-# AWS S3 Configuration (optional)
+# AWS S3 Configuration with connection pooling
 if STORAGE_TYPE == 's3':
     s3_client = boto3.client(
         's3',
         aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
         aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-        region_name=os.getenv('AWS_REGION', 'us-east-1')
+        region_name=os.getenv('AWS_REGION', 'us-east-1'),
+        config=boto3.Config(
+            max_pool_connections=50,
+            retries={'max_attempts': 3}
+        )
     )
     SECURE_BUCKET = os.getenv('S3_BUCKET_NAME', 'ncryp-secure-storage')
 else:
@@ -540,20 +614,14 @@ def track_visitor():
         today = datetime.utcnow().date().isoformat()
         
         # Update visitor stats
-        visitor_stats['total_visits'] += 1
-        if visitor_ip:
-            visitor_stats['unique_visitors'].add(visitor_ip)
+        visitor_stats.increment_visits(visitor_ip)
         
         # Track daily visits
-        if today not in visitor_stats['daily_visits']:
-            visitor_stats['daily_visits'][today] = 0
-        visitor_stats['daily_visits'][today] += 1
+        visitor_stats.record_daily_visit(today)
         
         # Track page views
         page = request.path
-        if page not in visitor_stats['page_views']:
-            visitor_stats['page_views'][page] = 0
-        visitor_stats['page_views'][page] += 1
+        visitor_stats.record_page_view(page)
         
     except Exception as e:
         logging.error(f"Visitor tracking error: {str(e)}")
@@ -619,13 +687,7 @@ def update_upload_stats(file_size):
     try:
         today = datetime.utcnow().date().isoformat()
         
-        visitor_stats['upload_stats']['total_uploads'] += 1
-        visitor_stats['upload_stats']['total_size'] += file_size
-        
-        if today not in visitor_stats['upload_stats']['uploads_by_date']:
-            visitor_stats['upload_stats']['uploads_by_date'][today] = {'count': 0, 'size': 0}
-        visitor_stats['upload_stats']['uploads_by_date'][today]['count'] += 1
-        visitor_stats['upload_stats']['uploads_by_date'][today]['size'] += file_size
+        visitor_stats.record_upload(file_size)
         
     except Exception as e:
         logging.error(f"Upload stats error: {str(e)}")
@@ -635,11 +697,7 @@ def update_download_stats():
     try:
         today = datetime.utcnow().date().isoformat()
         
-        visitor_stats['download_stats']['total_downloads'] += 1
-        
-        if today not in visitor_stats['download_stats']['downloads_by_date']:
-            visitor_stats['download_stats']['downloads_by_date'][today] = 0
-        visitor_stats['download_stats']['downloads_by_date'][today] += 1
+        visitor_stats.record_download()
         
     except Exception as e:
         logging.error(f"Download stats error: {str(e)}")
@@ -852,12 +910,45 @@ def delete_file(file_id):
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.utcnow().isoformat(),
-        'storage_type': STORAGE_TYPE,
-        'clamav_available': clamav is not None
-    }), 200
+    try:
+        # Check storage backend
+        storage_ok = False
+        if STORAGE_TYPE == 'local':
+            storage_ok = os.access(LOCAL_STORAGE_PATH, os.W_OK)
+        elif STORAGE_TYPE == 's3' and s3_client:
+            try:
+                s3_client.head_bucket(Bucket=SECURE_BUCKET)
+                storage_ok = True
+            except:
+                storage_ok = False
+        
+        # Check Firebase
+        firebase_ok = FIREBASE_AVAILABLE
+        
+        # Memory usage
+        memory_info = psutil.virtual_memory()
+        
+        return jsonify({
+            'status': 'healthy',
+            'timestamp': datetime.utcnow().isoformat(),
+            'storage': {
+                'type': STORAGE_TYPE,
+                'status': 'ok' if storage_ok else 'error'
+            },
+            'firebase': {
+                'status': 'ok' if firebase_ok else 'error'
+            },
+            'system': {
+                'memory_usage_percent': memory_info.percent,
+                'memory_available_mb': memory_info.available / (1024 * 1024)
+            },
+            'performance': {
+                'error_counts': performance_monitor.error_counts
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
 
 @app.route('/api/search/<share_id>', methods=['GET'])
 def search_file(share_id):
@@ -945,12 +1036,12 @@ def get_admin_stats():
         logging.info(f"Firebase user: {getattr(request, 'firebase_user', 'Not set')}")
         
         stats_data = {
-            'total_visits': visitor_stats['total_visits'],
-            'unique_visitors': len(visitor_stats['unique_visitors']),
-            'daily_visits': visitor_stats['daily_visits'],
-            'page_views': visitor_stats['page_views'],
-            'upload_stats': visitor_stats['upload_stats'],
-            'download_stats': visitor_stats['download_stats']
+            'total_visits': visitor_stats.get_stats()['total_visits'],
+            'unique_visitors': len(visitor_stats.get_stats()['unique_visitors']),
+            'daily_visits': visitor_stats.get_stats()['daily_visits'],
+            'page_views': visitor_stats.get_stats()['page_views'],
+            'upload_stats': visitor_stats.get_stats()['upload_stats'],
+            'download_stats': visitor_stats.get_stats()['download_stats']
         }
         
         logging.info(f"Returning stats: {stats_data}")
@@ -1003,6 +1094,33 @@ def test_session():
     except Exception as e:
         logging.error(f"Session test error: {str(e)}")
         return jsonify({'error': f'Session test failed: {str(e)}'}), 500
+
+# Middleware for performance monitoring
+@app.before_request
+def before_request():
+    performance_monitor.start_request(request.endpoint)
+    track_visitor()
+
+@app.after_request
+def after_request(response):
+    performance_monitor.end_request(request.endpoint)
+    
+    # Add performance headers
+    response.headers['X-Response-Time'] = str(time.time() - performance_monitor.request_times.get(request.endpoint, time.time()))
+    
+    # Add security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    
+    return response
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    performance_monitor.record_error(request.endpoint)
+    logger.error(f"Unhandled exception: {e}")
+    return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
     # Configure logging
