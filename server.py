@@ -129,7 +129,6 @@ ALLOWED_MIME_TYPES = {
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD_HASH = os.getenv('ADMIN_PASSWORD_HASH', '')
 ADMIN_SESSION_TIMEOUT = int(os.getenv('ADMIN_SESSION_TIMEOUT', 3600))  # 1 hour
-ADMIN_API_KEY = os.getenv('ADMIN_API_KEY', '')  # Simple API key for admin access
 
 # Visitor tracking storage with thread safety
 class ThreadSafeVisitorStats:
@@ -651,29 +650,18 @@ def require_firebase_admin(f):
         
         # Get Authorization header
         auth_header = request.headers.get('Authorization')
-        logging.info(f"Authorization header: {auth_header[:50] if auth_header else 'None'}...")
-        
         if not auth_header or not auth_header.startswith('Bearer '):
             logging.warning(f"Missing or invalid Authorization header for {request.remote_addr}")
             return jsonify({'error': 'Firebase authentication required'}), 401
         
         id_token = auth_header.split('Bearer ')[1]
-        logging.info(f"ID token length: {len(id_token)}")
-        
-        # If Firebase is not available, try simple API key authentication
-        if not FIREBASE_AVAILABLE or not auth:
-            logging.warning("Firebase Admin SDK not available, trying API key authentication")
-            admin_api_key = os.getenv('ADMIN_API_KEY', '')
-            if admin_api_key and id_token == admin_api_key:
-                logging.info("API key authentication successful")
-                return f(*args, **kwargs)
-            else:
-                logging.error("API key authentication failed")
-                return jsonify({'error': 'Firebase authentication not configured and API key invalid'}), 500
         
         try:
+            if not FIREBASE_AVAILABLE or not auth:
+                logging.error("Firebase Admin SDK not available")
+                return jsonify({'error': 'Firebase authentication not configured'}), 500
+            
             # Verify the Firebase ID token
-            logging.info("Attempting to verify Firebase ID token...")
             decoded_token = auth.verify_id_token(id_token)
             user_id = decoded_token['uid']
             email = decoded_token.get('email', '')
@@ -690,8 +678,7 @@ def require_firebase_admin(f):
             
         except Exception as e:
             logging.error(f"Firebase authentication failed: {str(e)}")
-            logging.error(f"Exception type: {type(e).__name__}")
-            return jsonify({'error': f'Invalid Firebase token: {str(e)}'}), 401
+            return jsonify({'error': 'Invalid Firebase token'}), 401
     
     return decorated_function
 
@@ -726,15 +713,6 @@ def verify_admin_password(password, stored_hash):
         return hmac.compare_digest(hash_obj.hexdigest(), hash_value)
     except Exception:
         return False
-
-@app.route('/', methods=['GET'])
-def root():
-    """Root endpoint for basic connectivity test"""
-    return jsonify({
-        'message': 'NCryp API is running',
-        'version': '1.0.0',
-        'timestamp': datetime.utcnow().isoformat()
-    }), 200
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -933,18 +911,40 @@ def delete_file(file_id):
 def health_check():
     """Health check endpoint"""
     try:
-        # Simple health check without complex dependencies
+        # Check storage backend
+        storage_ok = False
+        if STORAGE_TYPE == 'local':
+            storage_ok = os.access(LOCAL_STORAGE_PATH, os.W_OK)
+        elif STORAGE_TYPE == 's3' and s3_client:
+            try:
+                s3_client.head_bucket(Bucket=SECURE_BUCKET)
+                storage_ok = True
+            except:
+                storage_ok = False
+        
+        # Check Firebase
+        firebase_ok = FIREBASE_AVAILABLE
+        
+        # Memory usage
+        memory_info = psutil.virtual_memory()
+        
         return jsonify({
             'status': 'healthy',
             'timestamp': datetime.utcnow().isoformat(),
             'storage': {
                 'type': STORAGE_TYPE,
-                'status': 'ok'
+                'status': 'ok' if storage_ok else 'error'
             },
             'firebase': {
-                'status': 'ok' if FIREBASE_AVAILABLE else 'error'
+                'status': 'ok' if firebase_ok else 'error'
             },
-            'message': 'NCryp server is running'
+            'system': {
+                'memory_usage_percent': memory_info.percent,
+                'memory_available_mb': memory_info.available / (1024 * 1024)
+            },
+            'performance': {
+                'error_counts': performance_monitor.error_counts
+            }
         }), 200
     except Exception as e:
         logger.error(f"Health check failed: {e}")

@@ -26,30 +26,21 @@ export const AdminDashboard = ({ onLogout }) => {
       setLoading(true);
       
       // Get Firebase ID token for authentication
-      let authToken = '';
-      try {
-        if (currentUser) {
-          authToken = await currentUser.getIdToken();
-        }
-      } catch (error) {
-        console.log('Firebase token not available, using API key fallback');
-        // Use API key as fallback
-        authToken = 'yslucYPjdX4RAaf3eqRIEAbfduqLArSq';
-      }
+      const idToken = await currentUser.getIdToken();
       
-      console.log('Loading dashboard data with auth token...');
+      console.log('Loading dashboard data with Firebase token...');
       
       // Load stats and files in parallel
       const [statsResponse, filesResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/admin/stats`, {
           headers: {
-            'Authorization': `Bearer ${authToken}`,
+            'Authorization': `Bearer ${idToken}`,
             'Content-Type': 'application/json'
           }
         }),
         fetch(`${API_BASE_URL}/api/admin/files`, {
           headers: {
-            'Authorization': `Bearer ${authToken}`,
+            'Authorization': `Bearer ${idToken}`,
             'Content-Type': 'application/json'
           }
         })
