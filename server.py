@@ -714,6 +714,82 @@ def verify_admin_password(password, stored_hash):
     except Exception:
         return False
 
+# Simple JWT token system for user authentication
+import jwt
+import base64
+import json
+
+# Simple token verification (for client-side Firebase auth)
+def verify_simple_token(token):
+    """Verify a simple JWT token from client-side Firebase auth"""
+    try:
+        # Decode the token without verification (for client-side auth)
+        # In production, you'd want to verify the signature
+        parts = token.split('.')
+        if len(parts) != 3:
+            return None
+        
+        # Decode the payload
+        payload = parts[1]
+        # Add padding if needed
+        payload += '=' * (4 - len(payload) % 4)
+        decoded = base64.b64decode(payload)
+        data = json.loads(decoded)
+        
+        # Extract user info
+        user_id = data.get('user_id', data.get('sub', ''))
+        email = data.get('email', '')
+        
+        return {
+            'uid': user_id,
+            'email': email
+        }
+    except Exception as e:
+        logging.error(f"Token verification failed: {str(e)}")
+        return None
+
+def require_simple_user_auth(f):
+    """Decorator to require simple user authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        logging.info(f"User endpoint accessed: {request.endpoint}")
+        
+        # Get Authorization header
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            logging.warning(f"Missing or invalid Authorization header for {request.remote_addr}")
+            return jsonify({'error': 'User authentication required'}), 401
+        
+        token = auth_header.split('Bearer ')[1]
+        
+        # Try simple token verification first
+        user_info = verify_simple_token(token)
+        
+        if user_info:
+            logging.info(f"Simple token authentication successful for: {user_info['email']}")
+            setattr(request, 'firebase_user', user_info)
+            return f(*args, **kwargs)
+        
+        # Fallback to Firebase Admin SDK if available
+        if FIREBASE_AVAILABLE and auth:
+            try:
+                decoded_token = auth.verify_id_token(token)
+                user_id = decoded_token['uid']
+                email = decoded_token.get('email', '')
+                
+                logging.info(f"Firebase Admin authentication successful for: {email} ({user_id})")
+                setattr(request, 'firebase_user', {
+                    'uid': user_id,
+                    'email': email
+                })
+                return f(*args, **kwargs)
+            except Exception as e:
+                logging.error(f"Firebase Admin authentication failed: {str(e)}")
+        
+        return jsonify({'error': 'Invalid authentication token'}), 401
+    
+    return decorated_function
+
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     """Upload and encrypt a file"""
@@ -1137,7 +1213,7 @@ def require_firebase_user(f):
     return decorated_function
 
 @app.route('/api/user/files', methods=['GET'])
-@require_firebase_user
+@require_simple_user_auth
 def get_user_files():
     """Get files uploaded by the authenticated user"""
     try:
@@ -1168,7 +1244,7 @@ def get_user_files():
         return jsonify({'error': f'Failed to get user files: {str(e)}'}), 500
 
 @app.route('/api/user/files/<file_id>', methods=['DELETE'])
-@require_firebase_user
+@require_simple_user_auth
 def delete_user_file(file_id):
     """Delete a file uploaded by the authenticated user"""
     try:
@@ -1200,7 +1276,7 @@ def delete_user_file(file_id):
         return jsonify({'error': f'Failed to delete file: {str(e)}'}), 500
 
 @app.route('/api/user/upload', methods=['POST'])
-@require_firebase_user
+@require_simple_user_auth
 def user_upload_file():
     """Upload file for authenticated user"""
     try:

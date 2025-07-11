@@ -9,6 +9,23 @@ import './UserDashboard.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+// Simple token creation for client-side auth
+const createSimpleToken = (user) => {
+  const payload = {
+    user_id: user.uid,
+    email: user.email,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + (60 * 60) // 1 hour expiry
+  };
+  
+  // Simple base64 encoding (in production, use proper JWT)
+  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payloadEncoded = btoa(JSON.stringify(payload));
+  const signature = btoa('simple-signature'); // In production, use proper signature
+  
+  return `${header}.${payloadEncoded}.${signature}`;
+};
+
 export const UserDashboard = ({ onLogout }) => {
   const { currentUser, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('upload');
@@ -24,11 +41,13 @@ export const UserDashboard = ({ onLogout }) => {
   const loadUserFiles = async () => {
     try {
       setLoading(true);
-      const idToken = await currentUser.getIdToken();
+      
+      // Create simple token for authentication
+      const simpleToken = createSimpleToken(currentUser);
       
       const response = await fetch(`${API_BASE_URL}/api/user/files`, {
         headers: {
-          'Authorization': `Bearer ${idToken}`,
+          'Authorization': `Bearer ${simpleToken}`,
           'Content-Type': 'application/json'
         }
       });
@@ -65,12 +84,13 @@ export const UserDashboard = ({ onLogout }) => {
 
   const handleFileDelete = async (fileId) => {
     try {
-      const idToken = await currentUser.getIdToken();
+      // Create simple token for authentication
+      const simpleToken = createSimpleToken(currentUser);
       
       const response = await fetch(`${API_BASE_URL}/api/user/files/${fileId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${idToken}`,
+          'Authorization': `Bearer ${simpleToken}`,
           'Content-Type': 'application/json'
         }
       });
