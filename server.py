@@ -20,6 +20,7 @@ import time
 from threading import Lock
 import gc
 import psutil
+from stats_db import get_db, init_db
 
 # Configure basic logging first
 logging.basicConfig(
@@ -130,140 +131,133 @@ ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD_HASH = os.getenv('ADMIN_PASSWORD_HASH', '')
 ADMIN_SESSION_TIMEOUT = int(os.getenv('ADMIN_SESSION_TIMEOUT', 3600))  # 1 hour
 
-# Visitor tracking storage with thread safety
-class ThreadSafeVisitorStats:
+class PersistentVisitorStats:
     def __init__(self):
-        self.lock = Lock()
-        self.stats = {
-            'total_visits': 0,
-            'unique_visitors': set(),
-            'daily_visits': {},
-            'page_views': {},
+        init_db()
+
+    def record_user_registration(self, user_id, user_email):
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('INSERT OR IGNORE INTO users (id, email) VALUES (?, ?)', (user_id, user_email))
+        conn.commit()
+        conn.close()
+
+    def record_user_login(self, user_id, user_email, session_id, ip_address):
+        conn = get_db()
+        c = conn.cursor()
+        # Ensure user exists
+        c.execute('INSERT OR IGNORE INTO users (id, email) VALUES (?, ?)', (user_id, user_email))
+        # Insert or update session
+        c.execute('''
+            INSERT OR REPLACE INTO sessions (id, user_id, ip_address, last_activity, session_type)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'registered')
+        ''', (session_id, user_id, ip_address))
+        conn.commit()
+        conn.close()
+
+    def record_guest_session(self, session_id, ip_address):
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('''
+            INSERT OR REPLACE INTO sessions (id, user_id, ip_address, last_activity, session_type)
+            VALUES (?, NULL, ?, CURRENT_TIMESTAMP, 'guest')
+        ''', (session_id, ip_address))
+        conn.commit()
+        conn.close()
+
+    def update_session_activity(self, session_id):
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('UPDATE sessions SET last_activity = CURRENT_TIMESTAMP WHERE id = ?', (session_id,))
+        conn.commit()
+        conn.close()
+
+    def remove_session(self, session_id):
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('DELETE FROM sessions WHERE id = ?', (session_id,))
+        conn.commit()
+        conn.close()
+
+    def increment_visits(self, visitor_id):
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('INSERT INTO visits (visitor_id, visit_date, page) VALUES (?, DATE("now"), "/")', (visitor_id,))
+        conn.commit()
+        conn.close()
+
+    def record_page_view(self, page):
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('INSERT INTO visits (visitor_id, visit_date, page) VALUES (?, DATE("now"), ?)', ("anonymous", page))
+        conn.commit()
+        conn.close()
+
+    def record_daily_visit(self, date_str):
+        # Already handled by increment_visits
+        pass
+
+    def record_upload(self, file_size, user_id=None):
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('INSERT INTO uploads (user_id, file_size) VALUES (?, ?)', (user_id, file_size))
+        conn.commit()
+        conn.close()
+
+    def record_download(self, user_id=None):
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('INSERT INTO downloads (user_id) VALUES (?)', (user_id,))
+        conn.commit()
+        conn.close()
+
+    def get_stats(self):
+        conn = get_db()
+        c = conn.cursor()
+        # Registered users
+        c.execute('SELECT COUNT(*) FROM users')
+        total_registered_users = c.fetchone()[0]
+        # Guest users (sessions with session_type guest)
+        c.execute("SELECT COUNT(DISTINCT id) FROM sessions WHERE session_type = 'guest'")
+        total_guest_users = c.fetchone()[0]
+        # Live visitors (sessions active in last 5 min)
+        c.execute("SELECT COUNT(*) FROM sessions WHERE last_activity >= datetime('now', '-5 minutes')")
+        live_visitors = c.fetchone()[0]
+        # Total visits
+        c.execute('SELECT COUNT(*) FROM visits')
+        total_visits = c.fetchone()[0]
+        # Unique visitors
+        c.execute('SELECT COUNT(DISTINCT visitor_id) FROM visits')
+        unique_visitors = c.fetchone()[0]
+        # Total uploads
+        c.execute('SELECT COUNT(*) FROM uploads')
+        total_uploads = c.fetchone()[0]
+        # Total upload size
+        c.execute('SELECT SUM(file_size) FROM uploads')
+        total_upload_size = c.fetchone()[0] or 0
+        # Total downloads
+        c.execute('SELECT COUNT(*) FROM downloads')
+        total_downloads = c.fetchone()[0]
+        conn.close()
+        return {
+            'total_visits': total_visits,
+            'unique_visitors': unique_visitors,
             'upload_stats': {
-                'total_uploads': 0,
-                'total_size': 0,
-                'uploads_by_date': {}
+                'total_uploads': total_uploads,
+                'total_size': total_upload_size
             },
             'download_stats': {
-                'total_downloads': 0,
-                'downloads_by_date': {}
+                'total_downloads': total_downloads
             },
             'user_stats': {
-                'registered_users': set(),  # Set of user IDs
-                'guest_users': set(),       # Set of session IDs
-                'total_registered_users': 0,
-                'total_guest_users': 0,
-                'active_sessions': {},      # session_id -> {user_id, last_activity, ip}
-                'user_registrations_by_date': {},
-                'user_logins_by_date': {}
+                'total_registered_users': total_registered_users,
+                'total_guest_users': total_guest_users,
+                'live_visitors': live_visitors
             }
         }
-    
-    def get_stats(self):
-        with self.lock:
-            # Convert sets to lists for JSON serialization
-            stats_copy = self.stats.copy()
-            stats_copy['unique_visitors'] = list(self.stats['unique_visitors'])
-            stats_copy['user_stats']['registered_users'] = list(self.stats['user_stats']['registered_users'])
-            stats_copy['user_stats']['guest_users'] = list(self.stats['user_stats']['guest_users'])
-            
-            # Calculate live visitors (active sessions in last 5 minutes)
-            current_time = time.time()
-            live_visitors = 0
-            active_sessions = {}
-            
-            for session_id, session_data in self.stats['user_stats']['active_sessions'].items():
-                if current_time - session_data['last_activity'] < 300:  # 5 minutes
-                    live_visitors += 1
-                    active_sessions[session_id] = session_data
-                else:
-                    # Remove expired sessions
-                    del self.stats['user_stats']['active_sessions'][session_id]
-            
-            stats_copy['user_stats']['live_visitors'] = live_visitors
-            stats_copy['user_stats']['active_sessions'] = active_sessions
-            
-            return stats_copy
-    
-    def increment_visits(self, visitor_id):
-        with self.lock:
-            self.stats['total_visits'] += 1
-            self.stats['unique_visitors'].add(visitor_id)
-    
-    def record_page_view(self, page):
-        with self.lock:
-            self.stats['page_views'][page] = self.stats['page_views'].get(page, 0) + 1
-    
-    def record_daily_visit(self, date_str):
-        with self.lock:
-            self.stats['daily_visits'][date_str] = self.stats['daily_visits'].get(date_str, 0) + 1
-    
-    def record_upload(self, file_size):
-        with self.lock:
-            self.stats['upload_stats']['total_uploads'] += 1
-            self.stats['upload_stats']['total_size'] += file_size
-            date_str = datetime.now().strftime('%Y-%m-%d')
-            self.stats['upload_stats']['uploads_by_date'][date_str] = \
-                self.stats['upload_stats']['uploads_by_date'].get(date_str, 0) + 1
-    
-    def record_download(self):
-        with self.lock:
-            self.stats['download_stats']['total_downloads'] += 1
-            date_str = datetime.now().strftime('%Y-%m-%d')
-            self.stats['download_stats']['downloads_by_date'][date_str] = \
-                self.stats['download_stats']['downloads_by_date'].get(date_str, 0) + 1
-    
-    def record_user_registration(self, user_id, user_email):
-        """Record a new user registration"""
-        with self.lock:
-            self.stats['user_stats']['registered_users'].add(user_id)
-            self.stats['user_stats']['total_registered_users'] = len(self.stats['user_stats']['registered_users'])
-            date_str = datetime.now().strftime('%Y-%m-%d')
-            self.stats['user_stats']['user_registrations_by_date'][date_str] = \
-                self.stats['user_stats']['user_registrations_by_date'].get(date_str, 0) + 1
-    
-    def record_user_login(self, user_id, user_email, session_id, ip_address):
-        """Record a user login and update active sessions"""
-        with self.lock:
-            current_time = time.time()
-            self.stats['user_stats']['active_sessions'][session_id] = {
-                'user_id': user_id,
-                'user_email': user_email,
-                'last_activity': current_time,
-                'ip_address': ip_address,
-                'session_type': 'registered'
-            }
-            date_str = datetime.now().strftime('%Y-%m-%d')
-            self.stats['user_stats']['user_logins_by_date'][date_str] = \
-                self.stats['user_stats']['user_logins_by_date'].get(date_str, 0) + 1
-    
-    def record_guest_session(self, session_id, ip_address):
-        """Record a guest user session"""
-        with self.lock:
-            current_time = time.time()
-            self.stats['user_stats']['guest_users'].add(session_id)
-            self.stats['user_stats']['total_guest_users'] = len(self.stats['user_stats']['guest_users'])
-            self.stats['user_stats']['active_sessions'][session_id] = {
-                'user_id': None,
-                'user_email': None,
-                'last_activity': current_time,
-                'ip_address': ip_address,
-                'session_type': 'guest'
-            }
-    
-    def update_session_activity(self, session_id):
-        """Update last activity time for a session"""
-        with self.lock:
-            if session_id in self.stats['user_stats']['active_sessions']:
-                self.stats['user_stats']['active_sessions'][session_id]['last_activity'] = time.time()
-    
-    def remove_session(self, session_id):
-        """Remove a session when user logs out or session expires"""
-        with self.lock:
-            if session_id in self.stats['user_stats']['active_sessions']:
-                del self.stats['user_stats']['active_sessions'][session_id]
 
-visitor_stats = ThreadSafeVisitorStats()
+# Replace the old visitor_stats with the persistent version
+visitor_stats = PersistentVisitorStats()
 
 # File extension to MIME type mapping for better detection
 FILE_EXTENSIONS = {
@@ -782,13 +776,10 @@ def update_upload_stats(file_size):
     except Exception as e:
         logging.error(f"Upload stats error: {str(e)}")
 
-def update_download_stats():
+def update_download_stats(user_id=None):
     """Update download statistics"""
     try:
-        today = datetime.utcnow().date().isoformat()
-        
-        visitor_stats.record_download()
-        
+        visitor_stats.record_download(user_id)
     except Exception as e:
         logging.error(f"Download stats error: {str(e)}")
 
@@ -1199,12 +1190,9 @@ def get_admin_stats():
     """Get comprehensive admin statistics including user tracking"""
     try:
         stats = visitor_stats.get_stats()
-        
-        # Add additional computed statistics
+        # Add additional computed statistics from file_metadata (still in memory)
         total_files = len(file_metadata)
         total_storage_size = sum(metadata.get('size', 0) for metadata in file_metadata.values())
-        
-        # Calculate user file statistics
         user_files = {}
         for file_id, metadata in file_metadata.items():
             user_id = metadata.get('user_id')
@@ -1213,22 +1201,16 @@ def get_admin_stats():
                     user_files[user_id] = {'count': 0, 'size': 0}
                 user_files[user_id]['count'] += 1
                 user_files[user_id]['size'] += metadata.get('size', 0)
-        
-        # Get top users by file count
         top_users_by_files = sorted(
             [(user_id, data['count']) for user_id, data in user_files.items()],
             key=lambda x: x[1],
             reverse=True
         )[:10]
-        
-        # Get top users by storage size
         top_users_by_size = sorted(
             [(user_id, data['size']) for user_id, data in user_files.items()],
             key=lambda x: x[1],
             reverse=True
         )[:10]
-        
-        # Enhanced stats response
         enhanced_stats = {
             **stats,
             'system_stats': {
@@ -1243,10 +1225,7 @@ def get_admin_stats():
                 'user_file_distribution': user_files
             }
         }
-        
-        logging.info(f"Admin stats requested - returning comprehensive statistics")
         return jsonify(enhanced_stats), 200
-        
     except Exception as e:
         logging.error(f"Admin stats error: {str(e)}")
         return jsonify({'error': f'Failed to get admin stats: {str(e)}'}), 500
@@ -1431,7 +1410,7 @@ def download_user_file(file_id):
             return jsonify({'error': 'Failed to retrieve file'}), 500
         
         # Update download stats
-        update_download_stats()
+        update_download_stats(user_id)
         
         # Return file as download
         filename = metadata.get('filename', 'file')
@@ -1542,9 +1521,17 @@ def track_user_registration():
         user_id = data.get('user_id')
         user_email = data.get('email')
         
+        logging.info(f"Registration tracking request: user_id={user_id}, email={user_email}")
+        
         if user_id and user_email:
             visitor_stats.record_user_registration(user_id, user_email)
             logging.info(f"User registration tracked: {user_email} ({user_id})")
+            
+            # Debug: Print current stats
+            current_stats = visitor_stats.get_stats()
+            logging.info(f"Current registered users: {current_stats['user_stats']['total_registered_users']}")
+        else:
+            logging.warning(f"Invalid registration data: user_id={user_id}, email={user_email}")
         
         return jsonify({'message': 'Registration tracked'}), 200
     except Exception as e:
@@ -1558,6 +1545,8 @@ def track_user_login():
         data = request.get_json()
         user_id = data.get('user_id')
         user_email = data.get('email')
+        
+        logging.info(f"Login tracking request: user_id={user_id}, email={user_email}")
         
         # Get visitor IP
         visitor_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
@@ -1577,6 +1566,12 @@ def track_user_login():
         if user_id and user_email:
             visitor_stats.record_user_login(user_id, user_email, session_id, visitor_ip)
             logging.info(f"User login tracked: {user_email} ({user_id})")
+            
+            # Debug: Print current stats
+            current_stats = visitor_stats.get_stats()
+            logging.info(f"Current live visitors: {current_stats['user_stats']['live_visitors']}")
+        else:
+            logging.warning(f"Invalid login data: user_id={user_id}, email={user_email}")
         
         return jsonify({'message': 'Login tracked'}), 200
     except Exception as e:
@@ -1599,6 +1594,43 @@ def track_user_logout():
     except Exception as e:
         logging.error(f"Logout tracking error: {str(e)}")
         return jsonify({'error': 'Failed to track logout'}), 500
+
+@app.route('/api/test/populate-stats', methods=['POST'])
+def populate_test_stats():
+    """Test endpoint to populate some stats for debugging"""
+    try:
+        # Add some test data
+        visitor_stats.record_user_registration('test_user_1', 'test1@example.com')
+        visitor_stats.record_user_registration('test_user_2', 'test2@example.com')
+        visitor_stats.record_user_registration('test_user_3', 'test3@example.com')
+        
+        # Add some test logins
+        visitor_stats.record_user_login('test_user_1', 'test1@example.com', 'session_1', '127.0.0.1')
+        visitor_stats.record_user_login('test_user_2', 'test2@example.com', 'session_2', '127.0.0.1')
+        
+        # Add some test uploads
+        visitor_stats.record_upload(1024 * 1024)  # 1MB
+        visitor_stats.record_upload(2048 * 1024)  # 2MB
+        
+        # Add some test downloads
+        visitor_stats.record_download()
+        visitor_stats.record_download()
+        
+        # Add some test visits
+        visitor_stats.increment_visits('test_visitor_1')
+        visitor_stats.increment_visits('test_visitor_2')
+        visitor_stats.increment_visits('test_visitor_3')
+        
+        current_stats = visitor_stats.get_stats()
+        logging.info(f"Test stats populated: {current_stats}")
+        
+        return jsonify({
+            'message': 'Test stats populated',
+            'stats': current_stats
+        }), 200
+    except Exception as e:
+        logging.error(f"Test stats population error: {str(e)}")
+        return jsonify({'error': 'Failed to populate test stats'}), 500
 
 # Middleware for performance monitoring
 @app.before_request
