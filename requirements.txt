@@ -22,3 +22,7 @@ firebase-admin==6.2.0
 
 # Performance and monitoring
 redis==5.0.1 
+
+# Postgres support
+SQLAlchemy==2.0.30
+psycopg2-binary==2.9.9 
