@@ -1254,6 +1254,23 @@ def test_user_auth():
         logging.error(f"Test auth error: {str(e)}")
         return jsonify({'error': f'Test failed: {str(e)}'}), 500
 
+@app.route('/api/test-token', methods=['POST'])
+def test_token():
+    """Test endpoint to debug Firebase token issues"""
+    try:
+        auth_header = request.headers.get('Authorization')
+        
+        return jsonify({
+            'message': 'Token test',
+            'has_auth_header': auth_header is not None,
+            'auth_header_starts_with_bearer': auth_header.startswith('Bearer ') if auth_header else False,
+            'token_length': len(auth_header.split('Bearer ')[1]) if auth_header and auth_header.startswith('Bearer ') else 0,
+            'firebase_available': FIREBASE_AVAILABLE,
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'Token test failed: {str(e)}'}), 500
+
 @app.route('/api/test', methods=['GET'])
 def test_endpoint():
     """Simple test endpoint to verify backend is working"""
