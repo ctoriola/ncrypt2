@@ -1,1 +1,1 @@
-web: python start_railway.py 
+web: gunicorn test_server:app 

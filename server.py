@@ -1297,13 +1297,12 @@ if __name__ == '__main__':
     
     # Get port from environment (Railway sets PORT)
     port = int(os.getenv('PORT', 5000))
-    host = os.getenv('HOST', '0.0.0.0')
+    host = '0.0.0.0'
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     
     logging.info(f"Starting NCryp server with {STORAGE_TYPE} storage backend")
     logging.info(f"Server will run on {host}:{port}")
     logging.info(f"Debug mode: {debug}")
-    logging.info(f"PORT environment variable: {os.getenv('PORT', 'Not set')}")
     
     app.run(debug=debug, host=host, port=port)
 else:
