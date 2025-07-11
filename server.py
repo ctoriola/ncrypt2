@@ -20,12 +20,6 @@ import time
 from threading import Lock
 import gc
 import psutil
-import sqlite3
-from contextlib import contextmanager
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker, scoped_session
-from models import Base, AdminUser, File, FileHistory, Stats
-from sqlalchemy.exc import NoResultFound
 
 # Configure basic logging first
 logging.basicConfig(
@@ -57,6 +51,33 @@ class PerformanceMonitor:
             self.error_counts[endpoint] = self.error_counts.get(endpoint, 0) + 1
 
 performance_monitor = PerformanceMonitor()
+
+# Firebase Admin SDK
+try:
+    import firebase_admin
+    from firebase_admin import credentials, auth
+    FIREBASE_AVAILABLE = True
+    logger.info("Firebase Admin SDK imported successfully")
+    
+    # Initialize Firebase Admin SDK
+    firebase_credentials_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
+    if firebase_credentials_path and os.path.exists(firebase_credentials_path):
+        cred = credentials.Certificate(firebase_credentials_path)
+        firebase_admin.initialize_app(cred)
+        logger.info("Firebase Admin SDK initialized with service account")
+    else:
+        # Try to initialize with default credentials (for Railway/Heroku)
+        try:
+            firebase_admin.initialize_app()
+            logger.info("Firebase Admin SDK initialized with default credentials")
+        except Exception as e:
+            logger.warning(f"Firebase Admin SDK initialization failed: {e}")
+            FIREBASE_AVAILABLE = False
+except ImportError:
+    firebase_admin = None
+    auth = None
+    FIREBASE_AVAILABLE = False
+    logger.warning("Firebase Admin SDK not available - Firebase authentication disabled")
 
 # Optional ClamAV import
 try:
@@ -105,8 +126,8 @@ ALLOWED_MIME_TYPES = {
 }
 
 # Admin Configuration
-# Remove ADMIN_USERNAME and ADMIN_PASSWORD_HASH env usage
-# Use AdminUser table for admin authentication
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD_HASH = os.getenv('ADMIN_PASSWORD_HASH', '')
 ADMIN_SESSION_TIMEOUT = int(os.getenv('ADMIN_SESSION_TIMEOUT', 3600))  # 1 hour
 
 # Visitor tracking storage with thread safety
@@ -276,188 +297,6 @@ if CLAMAV_AVAILABLE and clamd is not None:
         logging.warning("ClamAV not available - malware scanning disabled")
 else:
     clamav = None
-
-# SQLAlchemy setup
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///ncryp.db')
-try:
-    engine = create_engine(DATABASE_URL, echo=False, future=True)
-    SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
-    
-    # Test database connection
-    with engine.connect() as conn:
-        conn.execute(text("SELECT 1")).fetchone()
-    logger.info("Database connection successful")
-    
-    # Create tables if they don't exist
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database tables created/verified")
-except Exception as e:
-    logger.error(f"Database connection failed: {e}")
-    # Fallback to in-memory SQLite for basic functionality
-    engine = create_engine('sqlite:///:memory:', echo=False, future=True)
-    SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
-    Base.metadata.create_all(bind=engine)
-    logger.warning("Using fallback in-memory database")
-
-# Database management
-class DatabaseManager:
-    def __init__(self, db_path):
-        self.db_path = db_path
-        self.init_database()
-    
-    def init_database(self):
-        """Initialize database with required tables"""
-        with self.get_db_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Create files table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS files (
-                    id TEXT PRIMARY KEY,
-                    share_id TEXT UNIQUE NOT NULL,
-                    filename TEXT NOT NULL,
-                    size INTEGER NOT NULL,
-                    upload_date TEXT NOT NULL,
-                    encrypted BOOLEAN DEFAULT TRUE,
-                    mime_type TEXT,
-                    user_id TEXT,
-                    ip_address TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            # Create file_history table for tracking downloads
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS file_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    file_id TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    user_id TEXT,
-                    ip_address TEXT,
-                    timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (file_id) REFERENCES files (id)
-                )
-            ''')
-            
-            # Create indexes for better performance
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_share_id ON files (share_id)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_user_id ON files (user_id)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_upload_date ON files (upload_date)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_history_file_id ON file_history (file_id)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_history_timestamp ON file_history (timestamp)')
-            
-            conn.commit()
-    
-    @contextmanager
-    def get_db_connection(self):
-        """Context manager for database connections"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row  # Enable dict-like access
-        try:
-            yield conn
-        finally:
-            conn.close()
-    
-    def add_file(self, file_data):
-        """Add a new file to the database"""
-        with self.get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO files (id, share_id, filename, size, upload_date, encrypted, mime_type, user_id, ip_address)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                file_data['id'],
-                file_data['share_id'],
-                file_data['filename'],
-                file_data['size'],
-                file_data['upload_date'],
-                file_data.get('encrypted', True),
-                file_data.get('mime_type'),
-                file_data.get('user_id'),
-                file_data.get('ip_address')
-            ))
-            conn.commit()
-    
-    def get_file(self, file_id):
-        """Get file by ID or share_id"""
-        with self.get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT * FROM files WHERE id = ? OR share_id = ?
-            ''', (file_id, file_id))
-            return cursor.fetchone()
-    
-    def get_all_files(self, user_id=None, limit=None, offset=0):
-        """Get all files, optionally filtered by user_id"""
-        with self.get_db_connection() as conn:
-            cursor = conn.cursor()
-            
-            query = 'SELECT * FROM files'
-            params = []
-            
-            if user_id:
-                query += ' WHERE user_id = ?'
-                params.append(user_id)
-            
-            query += ' ORDER BY upload_date DESC'
-            
-            if limit:
-                query += ' LIMIT ? OFFSET ?'
-                params.extend([limit, offset])
-            
-            cursor.execute(query, params)
-            return cursor.fetchall()
-    
-    def delete_file(self, file_id):
-        """Delete file from database"""
-        with self.get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM files WHERE id = ?', (file_id,))
-            conn.commit()
-            return cursor.rowcount > 0
-    
-    def add_history_entry(self, file_id, action, user_id=None, ip_address=None):
-        """Add a history entry for file actions"""
-        with self.get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO file_history (file_id, action, user_id, ip_address)
-                VALUES (?, ?, ?, ?)
-            ''', (file_id, action, user_id, ip_address))
-            conn.commit()
-    
-    def get_file_history(self, file_id=None, user_id=None, limit=50):
-        """Get file history, optionally filtered by file_id or user_id"""
-        with self.get_db_connection() as conn:
-            cursor = conn.cursor()
-            
-            query = '''
-                SELECT fh.*, f.filename 
-                FROM file_history fh
-                LEFT JOIN files f ON fh.file_id = f.id
-            '''
-            params = []
-            
-            conditions = []
-            if file_id:
-                conditions.append('fh.file_id = ?')
-                params.append(file_id)
-            if user_id:
-                conditions.append('fh.user_id = ?')
-                params.append(user_id)
-            
-            if conditions:
-                query += ' WHERE ' + ' AND '.join(conditions)
-            
-            query += ' ORDER BY fh.timestamp DESC LIMIT ?'
-            params.append(limit)
-            
-            cursor.execute(query, params)
-            return cursor.fetchall()
-
-# Initialize database
-# REMOVE: DATABASE_PATH = os.getenv('DATABASE_PATH', 'ncryp.db')
-# REMOVE: db_manager = DatabaseManager(DATABASE_PATH)
 
 # In-memory storage for demo (use Redis in production)
 file_metadata = {}
@@ -791,16 +630,56 @@ def require_admin(f):
     """Decorator to require admin authentication"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        admin_user_id = session.get('admin_user_id')
-        if not admin_user_id:
+        logging.info(f"Admin endpoint accessed: {request.endpoint}")
+        logging.info(f"Session admin flag: {session.get('admin')}")
+        logging.info(f"Full session: {dict(session)}")
+        
+        if not session.get('admin'):
+            logging.warning(f"Admin access denied for {request.remote_addr}")
             return jsonify({'error': 'Admin authentication required'}), 401
-        # Check that the user exists in the database
-        with get_db() as db:
-            user = db.query(AdminUser).filter_by(id=admin_user_id).first()
-            if not user:
-                session.clear()
-                return jsonify({'error': 'Admin authentication required'}), 401
+        
+        logging.info(f"Admin access granted for {request.remote_addr}")
         return f(*args, **kwargs)
+    return decorated_function
+
+def require_firebase_admin(f):
+    """Decorator to require Firebase admin authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        logging.info(f"Firebase admin endpoint accessed: {request.endpoint}")
+        
+        # Get Authorization header
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            logging.warning(f"Missing or invalid Authorization header for {request.remote_addr}")
+            return jsonify({'error': 'Firebase authentication required'}), 401
+        
+        id_token = auth_header.split('Bearer ')[1]
+        
+        try:
+            if not FIREBASE_AVAILABLE or not auth:
+                logging.error("Firebase Admin SDK not available")
+                return jsonify({'error': 'Firebase authentication not configured'}), 500
+            
+            # Verify the Firebase ID token
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+            email = decoded_token.get('email', '')
+            
+            logging.info(f"Firebase authentication successful for user: {email} ({user_id})")
+            
+            # Store user info in request context for use in the endpoint
+            setattr(request, 'firebase_user', {
+                'uid': user_id,
+                'email': email
+            })
+            
+            return f(*args, **kwargs)
+            
+        except Exception as e:
+            logging.error(f"Firebase authentication failed: {str(e)}")
+            return jsonify({'error': 'Invalid Firebase token'}), 401
+    
     return decorated_function
 
 def update_upload_stats(file_size):
@@ -834,14 +713,6 @@ def verify_admin_password(password, stored_hash):
         return hmac.compare_digest(hash_obj.hexdigest(), hash_value)
     except Exception:
         return False
-
-@contextmanager
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -896,18 +767,13 @@ def upload_file():
         share_id = generate_share_id()
         
         # Ensure share_id is unique (in production, use database with unique constraint)
-        with get_db() as db:
-            while db.query(File).filter_by(share_id=share_id).first(): # Use SQLAlchemy to check for existing share_id
-                share_id = generate_share_id()
+        while share_id in [f.get('share_id') for f in file_metadata.values()]:
+            share_id = generate_share_id()
 
         # Store file using appropriate backend
         storage_backend.store_file(file_id, file_data)
 
-        # Get user info for tracking
-        user_id = request.headers.get('X-User-ID')  # Frontend can send user ID
-        ip_address = request.remote_addr
-        
-        # Store metadata in database
+        # Store metadata
         metadata = {
             'id': file_id,
             'share_id': share_id,
@@ -918,10 +784,10 @@ def upload_file():
             'mime_type': mime_type
         }
         
-        with get_db() as db:
-            db.add(File(**metadata)) # Use SQLAlchemy to add file
-            db.commit()
-            db.refresh(metadata['id']) # Refresh to get the generated ID
+        file_metadata[file_id] = metadata
+        
+        # Store metadata in storage backend
+        storage_backend.store_file(f"{file_id}.meta", json.dumps(metadata).encode('utf-8'))
 
         # Update upload statistics
         update_upload_stats(len(file_data))
@@ -946,19 +812,31 @@ def list_files():
     track_visitor()  # Track visitor
     
     try:
-        with get_db() as db:
-            files = db.query(File).all() # Use SQLAlchemy to get all files
-        return_files = []
-        for file_meta in files:
-            return_files.append({
-                'id': file_meta.id,
-                'share_id': file_meta.share_id,
-                'filename': file_meta.filename,
-                'size': file_meta.size,
-                'upload_date': file_meta.upload_date,
-                'encrypted': file_meta.encrypted
-            })
-        return jsonify({'files': return_files}), 200
+        files = []
+        for file_id, metadata in file_metadata.items():
+            # Check if file has share_id (new format) or expires_at (old format)
+            if 'share_id' in metadata:
+                # New format - include share_id
+                files.append({
+                    'id': file_id,
+                    'share_id': metadata['share_id'],
+                    'filename': metadata['filename'],
+                    'size': metadata['size'],
+                    'upload_date': metadata['upload_date'],
+                    'encrypted': metadata.get('encrypted', False)
+                })
+            elif 'expires_at' in metadata:
+                # Old format - check expiration
+                if datetime.fromisoformat(metadata['expires_at']) > datetime.utcnow():
+                    files.append({
+                        'id': file_id,
+                        'filename': metadata['filename'],
+                        'size': metadata['size'],
+                        'upload_date': metadata['upload_date'],
+                        'encrypted': metadata.get('encrypted', False)
+                    })
+        
+        return jsonify({'files': files}), 200
     except Exception as e:
         logging.error(f"List files error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
@@ -972,20 +850,22 @@ def download_file(file_id):
         # Check if file_id is a share_id (8 characters, alphanumeric)
         if len(file_id) == 8 and file_id.isalnum():
             # Search by share_id
-            with get_db() as db:
-                file_meta = db.query(File).filter_by(share_id=file_id).first() # Use SQLAlchemy to get file by share_id
+            file_meta = None
+            for meta in file_metadata.values():
+                if meta.get('share_id') == file_id:
+                    file_meta = meta
+                    break
             
             if not file_meta:
                 return jsonify({'error': 'File not found'}), 404
         else:
             # Search by UUID
-            with get_db() as db:
-                file_meta = db.query(File).filter_by(id=file_id).first() # Use SQLAlchemy to get file by UUID
+            file_meta = file_metadata.get(file_id)
             if not file_meta:
                 return jsonify({'error': 'File not found'}), 404
 
         # Retrieve file from storage
-        file_data = storage_backend.retrieve_file(file_meta.id)
+        file_data = storage_backend.retrieve_file(file_meta['id'])
         
         if not file_data:
             return jsonify({'error': 'File not found in storage'}), 404
@@ -993,7 +873,7 @@ def download_file(file_id):
         # Create response with encrypted file
         response = Response(file_data)
         response.headers['Content-Type'] = 'application/octet-stream'
-        response.headers['Content-Disposition'] = f'attachment; filename="{file_meta.filename}.encrypted"'
+        response.headers['Content-Disposition'] = f'attachment; filename="{file_meta["filename"]}.encrypted"'
         response.headers['Content-Length'] = len(file_data)
         
         # Update download statistics
@@ -1009,31 +889,18 @@ def download_file(file_id):
 def delete_file(file_id):
     """Delete file by ID"""
     try:
-        # Check if file_id is a share_id (8 characters, alphanumeric)
-        if len(file_id) == 8 and file_id.isalnum():
-            with get_db() as db:
-                file_meta = db.query(File).filter_by(share_id=file_id).first() # Use SQLAlchemy to get file by share_id
-        else:
-            with get_db() as db:
-                file_meta = db.query(File).filter_by(id=file_id).first() # Use SQLAlchemy to get file by UUID
-
-        if not file_meta:
+        if file_id not in file_metadata:
             return jsonify({'error': 'File not found'}), 404
         
         # Delete from storage backend
-        delete_success = storage_backend.delete_file(file_meta.id)
+        delete_success = storage_backend.delete_file(file_id)
         if not delete_success:
-            logging.error(f"Storage backend failed to delete file {file_meta.id}")
+            logging.error(f"Storage backend failed to delete file {file_id}")
             return jsonify({'error': 'Failed to delete file from storage'}), 500
         
-        # Remove metadata from in-memory storage
-        del file_metadata[file_meta.id]
+        # Remove metadata
+        del file_metadata[file_id]
         
-        # Add history entry
-        with get_db() as db:
-            db.add(FileHistory(file_id=file_meta.id, action='delete')) # Use SQLAlchemy to add history entry
-            db.commit()
-
         return jsonify({'message': 'File deleted successfully'}), 200
         
     except Exception as e:
@@ -1056,7 +923,7 @@ def health_check():
                 storage_ok = False
         
         # Check Firebase
-        firebase_ok = True # No Firebase, so always True for now
+        firebase_ok = FIREBASE_AVAILABLE
         
         # Memory usage
         memory_info = psutil.virtual_memory()
@@ -1094,8 +961,11 @@ def search_file(share_id):
             return jsonify({'error': 'Invalid share ID format'}), 400
 
         # Search for file with matching share_id
-        with get_db() as db:
-            file_meta = db.query(File).filter_by(share_id=share_id).first() # Use SQLAlchemy to get file by share_id
+        file_meta = None
+        for meta in file_metadata.values():
+            if meta.get('share_id') == share_id:
+                file_meta = meta
+                break
 
         if not file_meta:
             return jsonify({'error': 'File not found'}), 404
@@ -1103,10 +973,10 @@ def search_file(share_id):
         # Return file metadata (without sensitive information)
         return jsonify({
             'found': True,
-            'filename': file_meta.filename,
-            'size': file_meta.size,
-            'upload_date': file_meta.upload_date,
-            'share_id': file_meta.share_id
+            'filename': file_meta['filename'],
+            'size': file_meta['size'],
+            'upload_date': file_meta['upload_date'],
+            'share_id': file_meta['share_id']
         }), 200
 
     except Exception as e:
@@ -1124,27 +994,24 @@ def admin_login():
         logging.info(f"Admin login attempt from {request.remote_addr}")
         logging.info(f"Username: {username}")
         
-        with get_db() as db:
-            user = db.query(AdminUser).filter_by(username=username).first()
-            if not user or not verify_admin_password(password, user.password_hash):
-                logging.warning(f"Admin login failed for {request.remote_addr}")
-                return jsonify({'error': 'Invalid username or password'}), 401
-            
-            # Make session permanent and set admin flag
-            session.permanent = True
-            session['admin'] = True
-            session['admin_user_id'] = user.id # Set session admin_user_id
-            session['admin_login_time'] = datetime.utcnow().isoformat()
-            
-            logging.info(f"Admin login successful for {request.remote_addr}")
-            logging.info(f"Session after login: {dict(session)}")
-            logging.info(f"Session permanent: {session.permanent}")
-            
-            response = jsonify({'message': 'Admin login successful'})
-            response.headers['X-Session-Admin'] = 'true'
-            response.headers['X-Session-Time'] = session['admin_login_time']
-            
-            return response, 200
+        if username != ADMIN_USERNAME or not verify_admin_password(password, ADMIN_PASSWORD_HASH):
+            logging.warning(f"Admin login failed for {request.remote_addr}")
+            return jsonify({'error': 'Invalid username or password'}), 401
+        
+        # Make session permanent and set admin flag
+        session.permanent = True
+        session['admin'] = True
+        session['admin_login_time'] = datetime.utcnow().isoformat()
+        
+        logging.info(f"Admin login successful for {request.remote_addr}")
+        logging.info(f"Session after login: {dict(session)}")
+        logging.info(f"Session permanent: {session.permanent}")
+        
+        response = jsonify({'message': 'Admin login successful'})
+        response.headers['X-Session-Admin'] = 'true'
+        response.headers['X-Session-Time'] = session['admin_login_time']
+        
+        return response, 200
     except Exception as e:
         logging.error(f"Login error: {str(e)}")
         return jsonify({'error': f'Login failed: {str(e)}'}), 500
@@ -1161,12 +1028,12 @@ def admin_logout():
         return jsonify({'error': f'Logout failed: {str(e)}'}), 500
 
 @app.route('/api/admin/stats', methods=['GET'])
-@require_admin
+@require_firebase_admin
 def get_admin_stats():
     """Admin stats endpoint"""
     try:
         logging.info(f"Admin stats request from {request.remote_addr}")
-        logging.info(f"Session admin flag: {session.get('admin')}")
+        logging.info(f"Firebase user: {getattr(request, 'firebase_user', 'Not set')}")
         
         stats_data = {
             'total_visits': visitor_stats.get_stats()['total_visits'],
@@ -1184,25 +1051,24 @@ def get_admin_stats():
         return jsonify({'error': f'Stats failed: {str(e)}'}), 500
 
 @app.route('/api/admin/files', methods=['GET'])
-@require_admin
+@require_firebase_admin
 def get_admin_files():
     """Admin endpoint to get all files with metadata"""
     try:
         logging.info(f"Admin files request from {request.remote_addr}")
-        logging.info(f"Session admin flag: {session.get('admin')}")
+        logging.info(f"Firebase user: {getattr(request, 'firebase_user', 'Not set')}")
         
         files = []
-        with get_db() as db:
-            for file_meta in db.query(File).all():
-                files.append({
-                    'id': file_meta.id,
-                    'share_id': file_meta.share_id,
-                    'filename': file_meta.filename,
-                    'size': file_meta.size,
-                    'upload_date': file_meta.upload_date,
-                    'encrypted': file_meta.encrypted,
-                    'mime_type': file_meta.mime_type
-                })
+        for file_id, metadata in file_metadata.items():
+            files.append({
+                'id': file_id,
+                'share_id': metadata.get('share_id'),
+                'filename': metadata['filename'],
+                'size': metadata['size'],
+                'upload_date': metadata['upload_date'],
+                'encrypted': metadata.get('encrypted', False),
+                'mime_type': metadata.get('mime_type', 'unknown')
+            })
         
         logging.info(f"Returning {len(files)} files")
         return jsonify({'files': files}), 200
@@ -1228,32 +1094,6 @@ def test_session():
     except Exception as e:
         logging.error(f"Session test error: {str(e)}")
         return jsonify({'error': f'Session test failed: {str(e)}'}), 500
-
-@app.route('/api/user/files/<user_id>', methods=['GET'])
-def get_user_files(user_id):
-    """Get all files uploaded by a specific user"""
-    try:
-        logging.info(f"Getting user files for {user_id} from {request.remote_addr}")
-        # No Firebase, so this endpoint is not directly applicable
-        # If user_id is a Firebase UID, we would query Firestore here
-        # For now, we'll return an empty list or a placeholder
-        return jsonify({'message': f'User files for {user_id} endpoint not fully implemented without Firebase'}), 501
-    except Exception as e:
-        logging.error(f"Failed to get user files for {user_id}: {e}")
-        return jsonify({'error': f'Failed to get user files: {str(e)}'}), 500
-
-@app.route('/api/user/files/<user_id>/history', methods=['GET'])
-def get_user_file_history(user_id):
-    """Get history of actions for files uploaded by a specific user"""
-    try:
-        logging.info(f"Getting file history for user {user_id} from {request.remote_addr}")
-        # No Firebase, so this endpoint is not directly applicable
-        # If user_id is a Firebase UID, we would query Firestore here
-        # For now, we'll return an empty list or a placeholder
-        return jsonify({'message': f'User file history for {user_id} endpoint not fully implemented without Firebase'}), 501
-    except Exception as e:
-        logging.error(f"Failed to get file history for user {user_id}: {e}")
-        return jsonify({'error': f'Failed to get user file history: {str(e)}'}), 500
 
 # Middleware for performance monitoring
 @app.before_request
@@ -1297,7 +1137,7 @@ if __name__ == '__main__':
     
     # Get port from environment (Railway sets PORT)
     port = int(os.getenv('PORT', 5000))
-    host = '0.0.0.0'
+    host = os.getenv('HOST', '0.0.0.0')
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     
     logging.info(f"Starting NCryp server with {STORAGE_TYPE} storage backend")
@@ -1310,4 +1150,4 @@ else:
     logging.basicConfig(level=logging.INFO)
     logging.info("NCryp server module loaded successfully")
     logging.info(f"Storage type: {STORAGE_TYPE}")
-    logging.info(f"Firebase available: True (No Firebase)")
+    logging.info(f"Firebase available: {FIREBASE_AVAILABLE}")

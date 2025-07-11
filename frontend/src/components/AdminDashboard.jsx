@@ -25,21 +25,24 @@ export const AdminDashboard = ({ onLogout }) => {
     try {
       setLoading(true);
       
-      console.log('Loading dashboard data with session authentication...');
+      // Get Firebase ID token for authentication
+      const idToken = await currentUser.getIdToken();
+      
+      console.log('Loading dashboard data with Firebase token...');
       
       // Load stats and files in parallel
       const [statsResponse, filesResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/admin/stats`, {
           headers: {
+            'Authorization': `Bearer ${idToken}`,
             'Content-Type': 'application/json'
-          },
-          credentials: 'include' // Include session cookies
+          }
         }),
         fetch(`${API_BASE_URL}/api/admin/files`, {
           headers: {
+            'Authorization': `Bearer ${idToken}`,
             'Content-Type': 'application/json'
-          },
-          credentials: 'include' // Include session cookies
+          }
         })
       ]);
 
@@ -141,7 +144,7 @@ export const AdminDashboard = ({ onLogout }) => {
             <p>Monitor your NCryp application</p>
             {currentUser && (
               <p className="admin-user-info">
-                Logged in as: {currentUser.username}
+                Logged in as: {currentUser.email}
               </p>
             )}
           </div>

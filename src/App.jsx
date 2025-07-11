@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { SecureUploader } from './components/SecureUploader';
 import { FileDecryptor } from './components/FileDecryptor';
 import { FileList } from './components/FileList';
-import { FileHistory } from './components/FileHistory';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { ToastContainer, toast } from 'react-toastify';
@@ -96,16 +95,6 @@ function App() {
               </svg>
               Decrypt Files
             </button>
-            <button
-              className={`nav-tab ${activeTab === 'history' ? 'active' : ''}`}
-              onClick={() => setActiveTab('history')}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16l-3-3H9a2 2 0 0 1-2-2z"></path>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              File History
-            </button>
           </div>
 
           {/* Tab Content */}
@@ -134,13 +123,6 @@ function App() {
           {activeTab === 'decrypt' && (
             <section className="decrypt-section">
               <FileDecryptor />
-            </section>
-          )}
-
-          {activeTab === 'history' && (
-            <section className="history-section">
-              <h2>File History</h2>
-              <FileHistory userId={1} />
             </section>
           )}
         </div>

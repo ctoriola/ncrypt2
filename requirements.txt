@@ -1,9 +1,24 @@
 Flask==2.3.3
 Flask-CORS==4.0.0
 python-dotenv==1.0.0
+boto3==1.34.0
+cryptography==41.0.7
 Werkzeug==2.3.7
 gunicorn==21.2.0
+psutil==5.9.6
 
-# Postgres support
-SQLAlchemy==2.0.30
-psycopg2-binary==2.9.9 
+# Google Cloud Storage (optional)
+google-cloud-storage==2.10.0
+
+# Azure Blob Storage (optional)
+azure-storage-blob==12.19.0
+
+# ClamAV (optional - install separately if needed)
+# python-clamd==0.4.0
+
+python-magic==0.4.27
+clamd==1.0.2
+firebase-admin==6.2.0
+
+# Performance and monitoring
+redis==5.0.1 

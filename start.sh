@@ -1,20 +1,36 @@
 #!/bin/bash
 
-# Set default port if not provided
-export PORT=${PORT:-5000}
+# Debug: Show current directory and files
+echo "Current directory: $(pwd)"
+echo "Files in current directory:"
+ls -la
 
-echo "Starting NCryp server on port $PORT"
+# Debug: Show Python version
+echo "Python version:"
+python --version
 
-# Check if we're in a Railway environment
-if [ -n "$RAILWAY_STATIC_URL" ]; then
-    echo "Running in Railway environment"
-    # Railway automatically sets PORT
-    exec gunicorn --bind 0.0.0.0:$PORT server:app
-else
-    echo "Running in local environment"
-    # For local development
-    exec python server.py
+# Create virtual environment if it doesn't exist
+if [ ! -d "venv" ]; then
+    echo "Creating virtual environment..."
+    python -m venv venv
 fi
+
+# Activate virtual environment
+echo "Activating virtual environment..."
+source venv/bin/activate
+
+# Debug: Show pip list
+echo "Installed packages:"
+pip list
+
+# Debug: Check if gunicorn is available
+echo "Checking gunicorn:"
+which gunicorn
+gunicorn --version
+
+# Start the application
+echo "Starting gunicorn..."
+gunicorn --bind 0.0.0.0:$PORT server:app
 
 # NCryp Development Startup Script
 

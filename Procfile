@@ -1,1 +1,1 @@
-web: gunicorn test_server:app 
+web: bash start.sh 
