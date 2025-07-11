@@ -1185,7 +1185,7 @@ def admin_logout():
         return jsonify({'error': f'Logout failed: {str(e)}'}), 500
 
 @app.route('/api/admin/stats', methods=['GET'])
-@require_firebase_admin
+@require_admin
 def get_admin_stats():
     """Get comprehensive admin statistics including user tracking"""
     try:
@@ -1231,12 +1231,11 @@ def get_admin_stats():
         return jsonify({'error': f'Failed to get admin stats: {str(e)}'}), 500
 
 @app.route('/api/admin/files', methods=['GET'])
-@require_firebase_admin
+@require_admin
 def get_admin_files():
     """Admin endpoint to get all files with metadata"""
     try:
         logging.info(f"Admin files request from {request.remote_addr}")
-        logging.info(f"Firebase user: {getattr(request, 'firebase_user', 'Not set')}")
         
         files = []
         for file_id, metadata in file_metadata.items():
