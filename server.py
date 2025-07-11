@@ -22,7 +22,7 @@ import gc
 import psutil
 import sqlite3
 from contextlib import contextmanager
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, scoped_session
 from models import Base, AdminUser, File, FileHistory, Stats
 from sqlalchemy.exc import NoResultFound
@@ -279,11 +279,25 @@ else:
 
 # SQLAlchemy setup
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///ncryp.db')
-engine = create_engine(DATABASE_URL, echo=False, future=True)
-SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
-
-# Create tables if they don't exist
-Base.metadata.create_all(bind=engine)
+try:
+    engine = create_engine(DATABASE_URL, echo=False, future=True)
+    SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
+    
+    # Test database connection
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1")).fetchone()
+    logger.info("Database connection successful")
+    
+    # Create tables if they don't exist
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created/verified")
+except Exception as e:
+    logger.error(f"Database connection failed: {e}")
+    # Fallback to in-memory SQLite for basic functionality
+    engine = create_engine('sqlite:///:memory:', echo=False, future=True)
+    SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
+    Base.metadata.create_all(bind=engine)
+    logger.warning("Using fallback in-memory database")
 
 # Database management
 class DatabaseManager:
