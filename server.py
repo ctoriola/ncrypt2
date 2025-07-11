@@ -1254,6 +1254,41 @@ def test_user_auth():
         logging.error(f"Test auth error: {str(e)}")
         return jsonify({'error': f'Test failed: {str(e)}'}), 500
 
+@app.route('/api/test', methods=['GET'])
+def test_endpoint():
+    """Simple test endpoint to verify backend is working"""
+    try:
+        return jsonify({
+            'message': 'Backend is working!',
+            'timestamp': datetime.utcnow().isoformat(),
+            'firebase_available': FIREBASE_AVAILABLE,
+            'environment': os.getenv('FLASK_ENV', 'production')
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'Test failed: {str(e)}'}), 500
+
+@app.route('/api/test-upload', methods=['POST'])
+def test_upload():
+    """Test upload endpoint without Firebase authentication"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Simple file info response
+        return jsonify({
+            'message': 'Test upload successful',
+            'filename': file.filename,
+            'size': len(file.read()),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Test upload failed: {str(e)}'}), 500
+
 @app.route('/api/user/upload', methods=['POST'])
 @require_firebase_user
 def user_upload_file():
