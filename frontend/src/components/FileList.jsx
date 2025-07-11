@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
+import { useAuth } from '../contexts/AuthContext';
 import './FileList.css';
 
 // API base URL - use environment variable or default to Railway backend
@@ -7,7 +8,25 @@ const API_BASE_URL = import.meta.env.VITE_API_URL
   ? (import.meta.env.VITE_API_URL.startsWith('http') ? import.meta.env.VITE_API_URL : `https://${import.meta.env.VITE_API_URL}`)
   : 'https://web-production-5d61.up.railway.app';
 
-export function FileList({ files, loading, onDelete, onRefresh }) {
+// Simple token creation for client-side auth
+const createSimpleToken = (user) => {
+  const payload = {
+    user_id: user.uid,
+    email: user.email,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + (60 * 60) // 1 hour expiry
+  };
+  
+  // Simple base64 encoding (in production, use proper JWT)
+  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payloadEncoded = btoa(JSON.stringify(payload));
+  const signature = btoa('simple-signature'); // In production, use proper signature
+  
+  return `${header}.${payloadEncoded}.${signature}`;
+};
+
+export function FileList({ files, loading, onDelete, onRefresh, showUserFiles = false }) {
+  const { currentUser } = useAuth();
   const [downloading, setDownloading] = useState(null);
   const [copying, setCopying] = useState(null);
 
@@ -15,7 +34,25 @@ export function FileList({ files, loading, onDelete, onRefresh }) {
     try {
       setDownloading(fileId);
       
-      const response = await fetch(`${API_BASE_URL}/api/files/${fileId}`);
+      // Use user-specific endpoint if user is authenticated and showing user files
+      const downloadEndpoint = (currentUser && showUserFiles) 
+        ? `/api/user/files/${fileId}/download` 
+        : `/api/files/${fileId}`;
+      
+      const downloadUrl = `${API_BASE_URL}${downloadEndpoint}`;
+      
+      // Prepare request options
+      const requestOptions = {};
+      
+      // Add authentication header if user is authenticated and showing user files
+      if (currentUser && showUserFiles) {
+        const simpleToken = createSimpleToken(currentUser);
+        requestOptions.headers = {
+          'Authorization': `Bearer ${simpleToken}`
+        };
+      }
+      
+      const response = await fetch(downloadUrl, requestOptions);
       if (!response.ok) {
         throw new Error('Download failed');
       }
@@ -63,9 +100,28 @@ export function FileList({ files, loading, onDelete, onRefresh }) {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/files/${fileId}`, {
+      // Use user-specific endpoint if user is authenticated and showing user files
+      const deleteEndpoint = (currentUser && showUserFiles) 
+        ? `/api/user/files/${fileId}` 
+        : `/api/files/${fileId}`;
+      
+      const deleteUrl = `${API_BASE_URL}${deleteEndpoint}`;
+      
+      // Prepare request options
+      const requestOptions = {
         method: 'DELETE'
-      });
+      };
+      
+      // Add authentication header if user is authenticated and showing user files
+      if (currentUser && showUserFiles) {
+        const simpleToken = createSimpleToken(currentUser);
+        requestOptions.headers = {
+          'Authorization': `Bearer ${simpleToken}`,
+          'Content-Type': 'application/json'
+        };
+      }
+
+      const response = await fetch(deleteUrl, requestOptions);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

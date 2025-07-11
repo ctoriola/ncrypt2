@@ -1222,20 +1222,20 @@ def get_user_files():
         
         logging.info(f"User files request from {user_email} ({user_id})")
         
-        # Filter files by user_id (if stored) or return all files for now
-        # In a real implementation, you'd store user_id with each file
+        # Filter files by user_id to show only user's files
         user_files = []
         for file_id, metadata in file_metadata.items():
-            # For now, return all files. In production, filter by user_id
-            user_files.append({
-                'id': file_id,
-                'share_id': metadata.get('share_id'),
-                'filename': metadata['filename'],
-                'size': metadata['size'],
-                'upload_date': metadata['upload_date'],
-                'encrypted': metadata.get('encrypted', False),
-                'mime_type': metadata.get('mime_type', 'unknown')
-            })
+            # Check if this file belongs to the current user
+            if metadata.get('user_id') == user_id:
+                user_files.append({
+                    'id': file_id,
+                    'share_id': metadata.get('share_id'),
+                    'filename': metadata['filename'],
+                    'size': metadata['size'],
+                    'upload_date': metadata['upload_date'],
+                    'encrypted': metadata.get('encrypted', False),
+                    'mime_type': metadata.get('mime_type', 'unknown')
+                })
         
         logging.info(f"Returning {len(user_files)} files for user {user_email}")
         return jsonify({'files': user_files}), 200
@@ -1257,8 +1257,10 @@ def delete_user_file(file_id):
         if file_id not in file_metadata:
             return jsonify({'error': 'File not found'}), 404
         
-        # In a real implementation, you'd check if the user owns this file
-        # For now, allow deletion of any file
+        # Check if the user owns this file
+        metadata = file_metadata[file_id]
+        if metadata.get('user_id') != user_id:
+            return jsonify({'error': 'Access denied - you can only delete your own files'}), 403
         
         # Delete from storage
         try:
@@ -1274,6 +1276,52 @@ def delete_user_file(file_id):
     except Exception as e:
         logging.error(f"User file delete error: {str(e)}")
         return jsonify({'error': f'Failed to delete file: {str(e)}'}), 500
+
+@app.route('/api/user/files/<file_id>/download', methods=['GET'])
+@require_simple_user_auth
+def download_user_file(file_id):
+    """Download a file uploaded by the authenticated user"""
+    try:
+        user_id = request.firebase_user['uid']
+        user_email = request.firebase_user['email']
+        
+        logging.info(f"User file download request from {user_email} ({user_id}) for file {file_id}")
+        
+        # Check if file exists
+        if file_id not in file_metadata:
+            return jsonify({'error': 'File not found'}), 404
+        
+        # Check if the user owns this file
+        metadata = file_metadata[file_id]
+        if metadata.get('user_id') != user_id:
+            return jsonify({'error': 'Access denied - you can only download your own files'}), 403
+        
+        # Retrieve file from storage
+        try:
+            file_data = storage_backend.retrieve_file(file_id)
+            if file_data is None:
+                return jsonify({'error': 'File not found in storage'}), 404
+        except Exception as e:
+            logging.error(f"Failed to retrieve file from storage: {e}")
+            return jsonify({'error': 'Failed to retrieve file'}), 500
+        
+        # Update download stats
+        update_download_stats()
+        
+        # Return file as download
+        filename = metadata.get('filename', 'file')
+        mime_type = metadata.get('mime_type', 'application/octet-stream')
+        
+        response = Response(file_data, mimetype=mime_type)
+        response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response.headers['Content-Length'] = str(len(file_data))
+        
+        logging.info(f"File {file_id} downloaded by user {user_email}")
+        return response
+        
+    except Exception as e:
+        logging.error(f"User file download error: {str(e)}")
+        return jsonify({'error': f'Failed to download file: {str(e)}'}), 500
 
 @app.route('/api/user/upload', methods=['POST'])
 @require_simple_user_auth

@@ -1,12 +1,30 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { toast } from 'react-toastify';
+import { useAuth } from '../contexts/AuthContext';
 import './SecureUploader.css';
 
 // API base URL - use environment variable or default to Railway backend
 const API_BASE_URL = import.meta.env.VITE_API_URL 
   ? (import.meta.env.VITE_API_URL.startsWith('http') ? import.meta.env.VITE_API_URL : `https://${import.meta.env.VITE_API_URL}`)
   : 'https://web-production-5d61.up.railway.app';
+
+// Simple token creation for client-side auth
+const createSimpleToken = (user) => {
+  const payload = {
+    user_id: user.uid,
+    email: user.email,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + (60 * 60) // 1 hour expiry
+  };
+  
+  // Simple base64 encoding (in production, use proper JWT)
+  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payloadEncoded = btoa(JSON.stringify(payload));
+  const signature = btoa('simple-signature'); // In production, use proper signature
+  
+  return `${header}.${payloadEncoded}.${signature}`;
+};
 
 // File type validation
 const ACCEPTED_FILE_TYPES = {
@@ -27,6 +45,7 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 const MIN_PASSPHRASE_LENGTH = 8;
 
 export const SecureUploader = React.memo(({ onUploadComplete }) => {
+  const { currentUser } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentFile, setCurrentFile] = useState(null);
@@ -109,10 +128,25 @@ export const SecureUploader = React.memo(({ onUploadComplete }) => {
       const formData = new FormData();
       formData.append('file', encryptedFile, file.name + '.encrypted');
 
-      const response = await fetch(`${API_BASE_URL}/api/upload`, {
+      // Use user-specific endpoint if user is authenticated
+      const uploadEndpoint = currentUser ? '/api/user/upload' : '/api/upload';
+      const uploadUrl = `${API_BASE_URL}${uploadEndpoint}`;
+
+      // Prepare request options
+      const requestOptions = {
         method: 'POST',
         body: formData
-      });
+      };
+
+      // Add authentication header if user is authenticated
+      if (currentUser) {
+        const simpleToken = createSimpleToken(currentUser);
+        requestOptions.headers = {
+          'Authorization': `Bearer ${simpleToken}`
+        };
+      }
+
+      const response = await fetch(uploadUrl, requestOptions);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -152,7 +186,7 @@ export const SecureUploader = React.memo(({ onUploadComplete }) => {
       setCurrentFile(null);
       toast.error(`Upload failed: ${error.message}`);
     }
-  }, [encryptFile, onUploadComplete]);
+  }, [encryptFile, onUploadComplete, currentUser]);
 
   // Memoized drop handler
   const onDrop = useCallback(async (acceptedFiles) => {

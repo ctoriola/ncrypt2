@@ -206,7 +206,8 @@ export const UserDashboard = ({ onLogout }) => {
             </div>
             <FileList 
               files={userFiles} 
-              onDeleteFile={handleFileDelete}
+              onDelete={handleFileDelete}
+              onRefresh={loadUserFiles}
               showUserFiles={true}
             />
           </div>
