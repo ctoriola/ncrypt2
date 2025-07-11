@@ -1,2 +1,115 @@
 /* Main page inherits all the existing App.css styles */
-/* This file can be used for any main page specific styles if needed */ 
+/* This file can be used for any main page specific styles if needed */
+
+/* Guest Notice Styles */
+.guest-notice {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 15px;
+  padding: 30px;
+  margin-bottom: 30px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.guest-notice-content {
+  text-align: center;
+  color: white;
+}
+
+.guest-notice-content h3 {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 15px 0;
+}
+
+.guest-notice-content p {
+  font-size: 16px;
+  margin: 0 0 25px 0;
+  opacity: 0.9;
+  line-height: 1.5;
+}
+
+.guest-actions {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.auth-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.auth-btn.primary {
+  background: rgba(255, 255, 255, 0.95);
+  color: #667eea;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.auth-btn.primary:hover {
+  background: white;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.auth-btn.secondary {
+  background: transparent;
+  color: white;
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.auth-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.8);
+  transform: translateY(-2px);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .guest-notice {
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  
+  .guest-notice-content h3 {
+    font-size: 24px;
+  }
+  
+  .guest-notice-content p {
+    font-size: 14px;
+  }
+  
+  .guest-actions {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .auth-btn {
+    width: 100%;
+    max-width: 250px;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .guest-notice {
+    padding: 15px;
+  }
+  
+  .guest-notice-content h3 {
+    font-size: 20px;
+  }
+  
+  .guest-notice-content p {
+    font-size: 13px;
+  }
+} 

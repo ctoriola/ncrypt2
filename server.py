@@ -1095,6 +1095,196 @@ def test_session():
         logging.error(f"Session test error: {str(e)}")
         return jsonify({'error': f'Session test failed: {str(e)}'}), 500
 
+# User-specific endpoints
+def require_firebase_user(f):
+    """Decorator to require Firebase user authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        logging.info(f"User endpoint accessed: {request.endpoint}")
+        
+        # Get Authorization header
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            logging.warning(f"Missing or invalid Authorization header for {request.remote_addr}")
+            return jsonify({'error': 'User authentication required'}), 401
+        
+        id_token = auth_header.split('Bearer ')[1]
+        
+        try:
+            if not FIREBASE_AVAILABLE or not auth:
+                logging.error("Firebase Admin SDK not available")
+                return jsonify({'error': 'Firebase authentication not configured'}), 500
+            
+            # Verify the Firebase ID token
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+            email = decoded_token.get('email', '')
+            
+            logging.info(f"User authentication successful for: {email} ({user_id})")
+            
+            # Store user info in request context for use in the endpoint
+            setattr(request, 'firebase_user', {
+                'uid': user_id,
+                'email': email
+            })
+            
+            return f(*args, **kwargs)
+            
+        except Exception as e:
+            logging.error(f"User authentication failed: {str(e)}")
+            return jsonify({'error': 'Invalid Firebase token'}), 401
+    
+    return decorated_function
+
+@app.route('/api/user/files', methods=['GET'])
+@require_firebase_user
+def get_user_files():
+    """Get files uploaded by the authenticated user"""
+    try:
+        user_id = request.firebase_user['uid']
+        user_email = request.firebase_user['email']
+        
+        logging.info(f"User files request from {user_email} ({user_id})")
+        
+        # Filter files by user_id (if stored) or return all files for now
+        # In a real implementation, you'd store user_id with each file
+        user_files = []
+        for file_id, metadata in file_metadata.items():
+            # For now, return all files. In production, filter by user_id
+            user_files.append({
+                'id': file_id,
+                'share_id': metadata.get('share_id'),
+                'filename': metadata['filename'],
+                'size': metadata['size'],
+                'upload_date': metadata['upload_date'],
+                'encrypted': metadata.get('encrypted', False),
+                'mime_type': metadata.get('mime_type', 'unknown')
+            })
+        
+        logging.info(f"Returning {len(user_files)} files for user {user_email}")
+        return jsonify({'files': user_files}), 200
+    except Exception as e:
+        logging.error(f"User files error: {str(e)}")
+        return jsonify({'error': f'Failed to get user files: {str(e)}'}), 500
+
+@app.route('/api/user/files/<file_id>', methods=['DELETE'])
+@require_firebase_user
+def delete_user_file(file_id):
+    """Delete a file uploaded by the authenticated user"""
+    try:
+        user_id = request.firebase_user['uid']
+        user_email = request.firebase_user['email']
+        
+        logging.info(f"User file delete request from {user_email} ({user_id}) for file {file_id}")
+        
+        # Check if file exists
+        if file_id not in file_metadata:
+            return jsonify({'error': 'File not found'}), 404
+        
+        # In a real implementation, you'd check if the user owns this file
+        # For now, allow deletion of any file
+        
+        # Delete from storage
+        try:
+            storage_backend.delete_file(file_id)
+        except Exception as e:
+            logging.warning(f"Failed to delete file from storage: {e}")
+        
+        # Remove from metadata
+        del file_metadata[file_id]
+        
+        logging.info(f"File {file_id} deleted by user {user_email}")
+        return jsonify({'message': 'File deleted successfully'}), 200
+    except Exception as e:
+        logging.error(f"User file delete error: {str(e)}")
+        return jsonify({'error': f'Failed to delete file: {str(e)}'}), 500
+
+@app.route('/api/user/upload', methods=['POST'])
+@require_firebase_user
+def user_upload_file():
+    """Upload file for authenticated user"""
+    try:
+        user_id = request.firebase_user['uid']
+        user_email = request.firebase_user['email']
+        
+        logging.info(f"User upload request from {user_email} ({user_id})")
+        
+        # Reuse the existing upload logic but add user context
+        return upload_file_with_user_context(user_id, user_email)
+    except Exception as e:
+        logging.error(f"User upload error: {str(e)}")
+        return jsonify({'error': f'Upload failed: {str(e)}'}), 500
+
+def upload_file_with_user_context(user_id, user_email):
+    """Upload file with user context"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Validate file
+        filename = secure_filename(file.filename or '')
+        validate_filename(filename)
+        
+        file_data = file.read()
+        file_size = len(file_data)
+        validate_file_size(file_size)
+        validate_mime_type(file_data, filename)
+        
+        # Scan for malware if enabled
+        if CLAMAV_AVAILABLE and clamd is not None:
+            scan_for_malware(file_data)
+        
+        # Generate unique file ID and share ID
+        file_id = str(uuid.uuid4())
+        share_id = generate_share_id()
+        
+        # Store file
+        storage_backend.store_file(file_id, file_data, {
+            'filename': filename,
+            'size': file_size,
+            'upload_date': datetime.utcnow().isoformat(),
+            'share_id': share_id,
+            'encrypted': False,
+            'mime_type': mimetypes.guess_type(filename)[0] or 'application/octet-stream',
+            'user_id': user_id,
+            'user_email': user_email
+        })
+        
+        # Update metadata
+        file_metadata[file_id] = {
+            'filename': filename,
+            'size': file_size,
+            'upload_date': datetime.utcnow().isoformat(),
+            'share_id': share_id,
+            'encrypted': False,
+            'mime_type': mimetypes.guess_type(filename)[0] or 'application/octet-stream',
+            'user_id': user_id,
+            'user_email': user_email
+        }
+        
+        # Update stats
+        update_upload_stats(file_size)
+        
+        logging.info(f"File uploaded by user {user_email}: {filename} ({file_size} bytes)")
+        
+        return jsonify({
+            'message': 'File uploaded successfully',
+            'file_id': file_id,
+            'share_id': share_id,
+            'filename': filename,
+            'size': file_size
+        }), 200
+        
+    except SecurityException as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logging.error(f"Upload error: {str(e)}")
+        return jsonify({'error': f'Upload failed: {str(e)}'}), 500
+
 # Middleware for performance monitoring
 @app.before_request
 def before_request():

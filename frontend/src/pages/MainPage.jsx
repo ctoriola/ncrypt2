@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import { SecureUploader } from '../components/SecureUploader';
 import { FileDecryptor } from '../components/FileDecryptor';
 import { FileList } from '../components/FileList';
 import { FileSearch } from '../components/FileSearch';
+import { UserDashboard } from '../components/UserDashboard';
+import { UserAuthPage } from './UserAuthPage';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
 import { ToastContainer, toast } from 'react-toastify';
@@ -15,10 +18,12 @@ const API_BASE_URL = import.meta.env.VITE_API_URL
   : 'https://web-production-5d61.up.railway.app';
 
 export function MainPage() {
+  const { currentUser } = useAuth();
   const [darkMode, setDarkMode] = useState(false);
   const [activeTab, setActiveTab] = useState('upload'); // 'upload', 'decrypt', or 'search'
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
 
   useEffect(() => {
     // Check for saved dark mode preference
@@ -78,12 +83,96 @@ export function MainPage() {
     setDarkMode(!darkMode);
   };
 
+  const handleAuthSuccess = () => {
+    setShowAuth(false);
+    toast.success('Welcome to NCryp!');
+  };
+
+  const handleUserLogout = () => {
+    setShowAuth(false);
+    toast.success('Logged out successfully');
+  };
+
+  // If user is authenticated, show user dashboard
+  if (currentUser) {
+    return (
+      <div className="app">
+        <UserDashboard onLogout={handleUserLogout} />
+        <ToastContainer 
+          position="bottom-right"
+          autoClose={5000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          theme={darkMode ? 'dark' : 'light'}
+        />
+      </div>
+    );
+  }
+
+  // If showing auth page
+  if (showAuth) {
+    return (
+      <div className="app">
+        <UserAuthPage onAuthSuccess={handleAuthSuccess} />
+        <ToastContainer 
+          position="bottom-right"
+          autoClose={5000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          theme={darkMode ? 'dark' : 'light'}
+        />
+      </div>
+    );
+  }
+
+  // Guest mode - show regular app
   return (
     <div className="app">
-      <Header darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
+      <Header 
+        darkMode={darkMode} 
+        onToggleDarkMode={toggleDarkMode}
+        onShowAuth={() => setShowAuth(true)}
+        onLogout={handleUserLogout}
+      />
       
       <main className="main-content">
         <div className="container">
+          {/* Guest Mode Notice */}
+          <div className="guest-notice">
+            <div className="guest-notice-content">
+              <h3>Welcome to NCryp!</h3>
+              <p>You're using NCryp in guest mode. Create an account to save your files and access them from anywhere.</p>
+              <div className="guest-actions">
+                <button 
+                  className="auth-btn primary"
+                  onClick={() => setShowAuth(true)}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                  </svg>
+                  Sign Up / Sign In
+                </button>
+                <button 
+                  className="auth-btn secondary"
+                  onClick={() => setActiveTab('upload')}
+                >
+                  Continue as Guest
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Navigation Tabs */}
           <div className="nav-tabs">
             <button
@@ -132,7 +221,7 @@ export function MainPage() {
               </section>
 
               <section className="files-section">
-                <h2>Your Files</h2>
+                <h2>Recent Files</h2>
                 <FileList 
                   files={files} 
                   loading={loading} 

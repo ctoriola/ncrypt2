@@ -110,6 +110,83 @@
   gap: 1rem;
 }
 
+/* User Authentication Styles */
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.user-avatar-small {
+  width: 2rem;
+  height: 2rem;
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.user-email {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logout-btn-small {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: #e53e3e;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.logout-btn-small:hover {
+  background: #c53030;
+  transform: translateY(-1px);
+}
+
+.login-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.login-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
 .theme-toggle {
   display: flex;
   align-items: center;
@@ -156,6 +233,29 @@
     position: absolute;
     top: 1rem;
     right: 1rem;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .user-menu {
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+  
+  .user-info {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .user-email {
+    max-width: 120px;
+    font-size: 0.75rem;
+  }
+  
+  .login-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
   }
   
   .logo h1 {
@@ -179,5 +279,33 @@
   .nav-link {
     padding: 0.5rem;
     font-size: 0.8rem;
+  }
+  
+  .header-actions {
+    position: static;
+    flex-direction: row;
+    gap: 0.5rem;
+  }
+  
+  .user-menu {
+    flex-direction: row;
+    padding: 0.25rem 0.5rem;
+  }
+  
+  .user-info {
+    flex-direction: row;
+  }
+  
+  .user-email {
+    display: none;
+  }
+  
+  .login-btn {
+    padding: 0.5rem;
+    font-size: 0.75rem;
+  }
+  
+  .login-btn span {
+    display: none;
   }
 } 
