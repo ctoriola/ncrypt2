@@ -1145,15 +1145,15 @@ def admin_login():
     """Admin login endpoint"""
     try:
         data = request.get_json()
-        username = data.get('username')
+        email = data.get('email')  # Changed from username to email
         password = data.get('password')
         
         logging.info(f"Admin login attempt from {request.remote_addr}")
-        logging.info(f"Username: {username}")
+        logging.info(f"Email: {email}")
         
-        if username != ADMIN_USERNAME or not verify_admin_password(password, ADMIN_PASSWORD_HASH):
+        if email != ADMIN_USERNAME or not verify_admin_password(password, ADMIN_PASSWORD_HASH):
             logging.warning(f"Admin login failed for {request.remote_addr}")
-            return jsonify({'error': 'Invalid username or password'}), 401
+            return jsonify({'error': 'Invalid email or password'}), 401
         
         # Make session permanent and set admin flag
         session.permanent = True
