@@ -1,6 +1,7 @@
 .user-dashboard {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-color: var(--background-color);
+  color: var(--text-primary);
   padding: 20px;
 }
 
@@ -8,13 +9,12 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
   border-radius: 15px;
   padding: 20px 30px;
   margin-bottom: 20px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: var(--shadow-md);
 }
 
 .user-info {
@@ -26,7 +26,7 @@
 .user-avatar {
   width: 50px;
   height: 50px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -35,14 +35,14 @@
 }
 
 .user-details h3 {
-  color: #2d3748;
+  color: var(--text-primary);
   font-size: 20px;
   font-weight: 700;
   margin: 0 0 5px 0;
 }
 
 .user-details p {
-  color: #718096;
+  color: var(--text-secondary);
   font-size: 14px;
   margin: 0;
 }
@@ -51,7 +51,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #e53e3e;
+  background: var(--danger-color);
   color: white;
   border: none;
   padding: 10px 20px;
@@ -63,7 +63,7 @@
 }
 
 .logout-btn:hover {
-  background: #c53030;
+  background: var(--danger-hover);
   transform: translateY(-1px);
 }
 
@@ -72,43 +72,45 @@
   gap: 10px;
   margin-bottom: 20px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .tab-btn {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.9);
-  color: #4a5568;
-  border: 2px solid transparent;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
   padding: 12px 20px;
   border-radius: 10px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-sm);
 }
 
 .tab-btn:hover {
-  background: rgba(255, 255, 255, 1);
+  background: var(--card-bg-secondary);
+  color: var(--text-primary);
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
 }
 
 .tab-btn.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--primary-color);
   color: white;
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-lg);
 }
 
 .user-dashboard-content {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
   border-radius: 15px;
   padding: 30px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: var(--shadow-md);
   min-height: 500px;
 }
 
@@ -122,11 +124,11 @@
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 2px solid var(--border-color);
 }
 
 .section-header h2 {
-  color: #2d3748;
+  color: var(--text-primary);
   font-size: 24px;
   font-weight: 700;
   margin: 0;
@@ -136,24 +138,29 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  background: #667eea;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--primary-color);
   color: white;
   border: none;
   border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
+  box-shadow: var(--shadow-sm);
 }
 
 .refresh-btn:hover:not(:disabled) {
-  background: #5a67d8;
+  background: var(--primary-hover);
   transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 .refresh-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
 }
 
 .spinner {
@@ -219,37 +226,39 @@
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
   .user-dashboard-header {
-    background: rgba(26, 32, 44, 0.95);
-    border-color: rgba(255, 255, 255, 0.1);
+    background: var(--card-bg);
+    border-color: var(--border-color);
   }
   
   .user-details h3 {
-    color: #f7fafc;
+    color: var(--text-primary);
   }
   
   .user-details p {
-    color: #a0aec0;
+    color: var(--text-secondary);
   }
   
   .tab-btn {
-    background: rgba(26, 32, 44, 0.9);
-    color: #e2e8f0;
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    border-color: var(--border-color);
   }
   
   .tab-btn:hover {
-    background: rgba(26, 32, 44, 1);
+    background: var(--card-bg-secondary);
+    color: var(--text-primary);
   }
   
   .user-dashboard-content {
-    background: rgba(26, 32, 44, 0.95);
-    border-color: rgba(255, 255, 255, 0.1);
+    background: var(--card-bg);
+    border-color: var(--border-color);
   }
   
   .section-header {
-    border-bottom-color: #4a5568;
+    border-bottom-color: var(--border-color);
   }
   
   .section-header h2 {
-    color: #f7fafc;
+    color: var(--text-primary);
   }
 } 
