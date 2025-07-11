@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import './AdminLogin.css';
 
 export const AdminLogin = ({ onLoginSuccess }) => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -12,42 +12,26 @@ export const AdminLogin = ({ onLoginSuccess }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!email || !password) {
-      toast.error('Please enter both email and password');
+    if (!username || !password) {
+      toast.error('Please enter both username and password');
       return;
     }
 
     setLoading(true);
     
     try {
-      console.log('Attempting Firebase admin login...');
-      await login(email, password);
+      console.log('Attempting admin login...');
+      await login(username, password);
       
-      console.log('Firebase login successful');
+      console.log('Admin login successful');
       toast.success('Admin login successful!');
       onLoginSuccess();
     } catch (error) {
-      console.error('Firebase login error:', error);
+      console.error('Admin login error:', error);
       
       let errorMessage = 'Login failed';
-      switch (error.code) {
-        case 'auth/user-not-found':
-          errorMessage = 'No admin account found with this email';
-          break;
-        case 'auth/wrong-password':
-          errorMessage = 'Incorrect password';
-          break;
-        case 'auth/invalid-email':
-          errorMessage = 'Invalid email address';
-          break;
-        case 'auth/too-many-requests':
-          errorMessage = 'Too many failed attempts. Please try again later';
-          break;
-        case 'auth/network-request-failed':
-          errorMessage = 'Network error. Please check your connection';
-          break;
-        default:
-          errorMessage = error.message || 'Login failed';
+      if (error.message) {
+        errorMessage = error.message;
       }
       
       toast.error(errorMessage);
@@ -66,18 +50,18 @@ export const AdminLogin = ({ onLoginSuccess }) => {
             <path d="M2 12l10 5 10-5"></path>
           </svg>
           <h2>Admin Dashboard</h2>
-          <p>Enter your Firebase credentials to access the admin panel</p>
+          <p>Enter your admin credentials to access the admin panel</p>
         </div>
 
         <form onSubmit={handleSubmit} className="admin-login-form">
           <div className="form-group">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="username">Username</label>
             <input
-              type="email"
-              id="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter admin email"
+              type="text"
+              id="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Enter admin username"
               required
             />
           </div>
@@ -110,8 +94,8 @@ export const AdminLogin = ({ onLoginSuccess }) => {
 
         <div className="admin-login-info">
           <p>
-            <strong>Note:</strong> This admin panel uses Firebase Authentication. 
-            Make sure you have created an admin user in your Firebase project.
+            <strong>Note:</strong> This admin panel uses session-based authentication. 
+            Make sure you have created an admin user in your database.
           </p>
         </div>
       </div>
