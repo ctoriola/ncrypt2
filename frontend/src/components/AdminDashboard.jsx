@@ -225,6 +225,49 @@ export const AdminDashboard = ({ onLogout }) => {
               <div className="stat-card">
                 <div className="stat-icon">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="8.5" cy="7" r="4"></circle>
+                    <line x1="20" y1="8" x2="20" y2="14"></line>
+                    <line x1="23" y1="11" x2="17" y2="11"></line>
+                  </svg>
+                </div>
+                <div className="stat-content">
+                  <h3>{stats?.user_stats?.total_registered_users || 0}</h3>
+                  <p>Registered Users</p>
+                </div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-icon">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                  </svg>
+                </div>
+                <div className="stat-content">
+                  <h3>{stats?.user_stats?.total_guest_users || 0}</h3>
+                  <p>Guest Users</p>
+                </div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-icon">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12,6 12,12 16,14"></polyline>
+                  </svg>
+                </div>
+                <div className="stat-content">
+                  <h3>{stats?.user_stats?.live_visitors || 0}</h3>
+                  <p>Live Visitors</p>
+                </div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-icon">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                     <polyline points="7,10 12,15 17,10"></polyline>
                     <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -247,6 +290,51 @@ export const AdminDashboard = ({ onLogout }) => {
                 <div className="stat-content">
                   <h3>{stats?.download_stats?.total_downloads || 0}</h3>
                   <p>Total Downloads</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="user-analytics">
+              <h3>User Analytics</h3>
+              <div className="user-stats-grid">
+                <div className="user-stat-card">
+                  <h4>User Distribution</h4>
+                  <div className="user-distribution">
+                    <div className="user-type">
+                      <span className="user-type-label">Registered:</span>
+                      <span className="user-type-count">{stats?.user_stats?.total_registered_users || 0}</span>
+                    </div>
+                    <div className="user-type">
+                      <span className="user-type-label">Guest:</span>
+                      <span className="user-type-count">{stats?.user_stats?.total_guest_users || 0}</span>
+                    </div>
+                    <div className="user-type">
+                      <span className="user-type-label">Live:</span>
+                      <span className="user-type-count">{stats?.user_stats?.live_visitors || 0}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="user-stat-card">
+                  <h4>System Statistics</h4>
+                  <div className="system-stats">
+                    <div className="system-stat">
+                      <span>Total Files:</span>
+                      <span>{stats?.system_stats?.total_files || 0}</span>
+                    </div>
+                    <div className="system-stat">
+                      <span>Total Storage:</span>
+                      <span>{formatBytes(stats?.system_stats?.total_storage_size || 0)}</span>
+                    </div>
+                    <div className="system-stat">
+                      <span>Avg File Size:</span>
+                      <span>{formatBytes(stats?.system_stats?.average_file_size || 0)}</span>
+                    </div>
+                    <div className="system-stat">
+                      <span>Files per User:</span>
+                      <span>{Math.round(stats?.system_stats?.files_per_user || 0)}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

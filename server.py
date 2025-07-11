@@ -147,21 +147,48 @@ class ThreadSafeVisitorStats:
             'download_stats': {
                 'total_downloads': 0,
                 'downloads_by_date': {}
+            },
+            'user_stats': {
+                'registered_users': set(),  # Set of user IDs
+                'guest_users': set(),       # Set of session IDs
+                'total_registered_users': 0,
+                'total_guest_users': 0,
+                'active_sessions': {},      # session_id -> {user_id, last_activity, ip}
+                'user_registrations_by_date': {},
+                'user_logins_by_date': {}
             }
         }
     
     def get_stats(self):
         with self.lock:
-            # Convert set to list for JSON serialization
+            # Convert sets to lists for JSON serialization
             stats_copy = self.stats.copy()
             stats_copy['unique_visitors'] = list(self.stats['unique_visitors'])
+            stats_copy['user_stats']['registered_users'] = list(self.stats['user_stats']['registered_users'])
+            stats_copy['user_stats']['guest_users'] = list(self.stats['user_stats']['guest_users'])
+            
+            # Calculate live visitors (active sessions in last 5 minutes)
+            current_time = time.time()
+            live_visitors = 0
+            active_sessions = {}
+            
+            for session_id, session_data in self.stats['user_stats']['active_sessions'].items():
+                if current_time - session_data['last_activity'] < 300:  # 5 minutes
+                    live_visitors += 1
+                    active_sessions[session_id] = session_data
+                else:
+                    # Remove expired sessions
+                    del self.stats['user_stats']['active_sessions'][session_id]
+            
+            stats_copy['user_stats']['live_visitors'] = live_visitors
+            stats_copy['user_stats']['active_sessions'] = active_sessions
+            
             return stats_copy
     
-    def increment_visits(self, visitor_id=None):
+    def increment_visits(self, visitor_id):
         with self.lock:
             self.stats['total_visits'] += 1
-            if visitor_id:
-                self.stats['unique_visitors'].add(visitor_id)
+            self.stats['unique_visitors'].add(visitor_id)
     
     def record_page_view(self, page):
         with self.lock:
@@ -185,6 +212,56 @@ class ThreadSafeVisitorStats:
             date_str = datetime.now().strftime('%Y-%m-%d')
             self.stats['download_stats']['downloads_by_date'][date_str] = \
                 self.stats['download_stats']['downloads_by_date'].get(date_str, 0) + 1
+    
+    def record_user_registration(self, user_id, user_email):
+        """Record a new user registration"""
+        with self.lock:
+            self.stats['user_stats']['registered_users'].add(user_id)
+            self.stats['user_stats']['total_registered_users'] = len(self.stats['user_stats']['registered_users'])
+            date_str = datetime.now().strftime('%Y-%m-%d')
+            self.stats['user_stats']['user_registrations_by_date'][date_str] = \
+                self.stats['user_stats']['user_registrations_by_date'].get(date_str, 0) + 1
+    
+    def record_user_login(self, user_id, user_email, session_id, ip_address):
+        """Record a user login and update active sessions"""
+        with self.lock:
+            current_time = time.time()
+            self.stats['user_stats']['active_sessions'][session_id] = {
+                'user_id': user_id,
+                'user_email': user_email,
+                'last_activity': current_time,
+                'ip_address': ip_address,
+                'session_type': 'registered'
+            }
+            date_str = datetime.now().strftime('%Y-%m-%d')
+            self.stats['user_stats']['user_logins_by_date'][date_str] = \
+                self.stats['user_stats']['user_logins_by_date'].get(date_str, 0) + 1
+    
+    def record_guest_session(self, session_id, ip_address):
+        """Record a guest user session"""
+        with self.lock:
+            current_time = time.time()
+            self.stats['user_stats']['guest_users'].add(session_id)
+            self.stats['user_stats']['total_guest_users'] = len(self.stats['user_stats']['guest_users'])
+            self.stats['user_stats']['active_sessions'][session_id] = {
+                'user_id': None,
+                'user_email': None,
+                'last_activity': current_time,
+                'ip_address': ip_address,
+                'session_type': 'guest'
+            }
+    
+    def update_session_activity(self, session_id):
+        """Update last activity time for a session"""
+        with self.lock:
+            if session_id in self.stats['user_stats']['active_sessions']:
+                self.stats['user_stats']['active_sessions'][session_id]['last_activity'] = time.time()
+    
+    def remove_session(self, session_id):
+        """Remove a session when user logs out or session expires"""
+        with self.lock:
+            if session_id in self.stats['user_stats']['active_sessions']:
+                del self.stats['user_stats']['active_sessions'][session_id]
 
 visitor_stats = ThreadSafeVisitorStats()
 
@@ -603,7 +680,7 @@ def generate_share_id():
     return ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
 
 def track_visitor():
-    """Track visitor statistics"""
+    """Track visitor statistics and session management"""
     try:
         # Get visitor IP
         visitor_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
@@ -612,6 +689,12 @@ def track_visitor():
         
         # Get current date
         today = datetime.utcnow().date().isoformat()
+        
+        # Generate or get session ID
+        session_id = session.get('session_id')
+        if not session_id:
+            session_id = str(uuid.uuid4())
+            session['session_id'] = session_id
         
         # Update visitor stats
         visitor_stats.increment_visits(visitor_ip)
@@ -622,6 +705,13 @@ def track_visitor():
         # Track page views
         page = request.path
         visitor_stats.record_page_view(page)
+        
+        # Update session activity
+        visitor_stats.update_session_activity(session_id)
+        
+        # If this is a guest session (no user logged in), record it
+        if not session.get('user_id'):
+            visitor_stats.record_guest_session(session_id, visitor_ip)
         
     except Exception as e:
         logging.error(f"Visitor tracking error: {str(e)}")
@@ -1106,25 +1196,60 @@ def admin_logout():
 @app.route('/api/admin/stats', methods=['GET'])
 @require_firebase_admin
 def get_admin_stats():
-    """Admin stats endpoint"""
+    """Get comprehensive admin statistics including user tracking"""
     try:
-        logging.info(f"Admin stats request from {request.remote_addr}")
-        logging.info(f"Firebase user: {getattr(request, 'firebase_user', 'Not set')}")
+        stats = visitor_stats.get_stats()
         
-        stats_data = {
-            'total_visits': visitor_stats.get_stats()['total_visits'],
-            'unique_visitors': len(visitor_stats.get_stats()['unique_visitors']),
-            'daily_visits': visitor_stats.get_stats()['daily_visits'],
-            'page_views': visitor_stats.get_stats()['page_views'],
-            'upload_stats': visitor_stats.get_stats()['upload_stats'],
-            'download_stats': visitor_stats.get_stats()['download_stats']
+        # Add additional computed statistics
+        total_files = len(file_metadata)
+        total_storage_size = sum(metadata.get('size', 0) for metadata in file_metadata.values())
+        
+        # Calculate user file statistics
+        user_files = {}
+        for file_id, metadata in file_metadata.items():
+            user_id = metadata.get('user_id')
+            if user_id:
+                if user_id not in user_files:
+                    user_files[user_id] = {'count': 0, 'size': 0}
+                user_files[user_id]['count'] += 1
+                user_files[user_id]['size'] += metadata.get('size', 0)
+        
+        # Get top users by file count
+        top_users_by_files = sorted(
+            [(user_id, data['count']) for user_id, data in user_files.items()],
+            key=lambda x: x[1],
+            reverse=True
+        )[:10]
+        
+        # Get top users by storage size
+        top_users_by_size = sorted(
+            [(user_id, data['size']) for user_id, data in user_files.items()],
+            key=lambda x: x[1],
+            reverse=True
+        )[:10]
+        
+        # Enhanced stats response
+        enhanced_stats = {
+            **stats,
+            'system_stats': {
+                'total_files': total_files,
+                'total_storage_size': total_storage_size,
+                'average_file_size': total_storage_size / total_files if total_files > 0 else 0,
+                'files_per_user': total_files / len(user_files) if user_files else 0
+            },
+            'user_analytics': {
+                'top_users_by_files': top_users_by_files,
+                'top_users_by_size': top_users_by_size,
+                'user_file_distribution': user_files
+            }
         }
         
-        logging.info(f"Returning stats: {stats_data}")
-        return jsonify(stats_data), 200
+        logging.info(f"Admin stats requested - returning comprehensive statistics")
+        return jsonify(enhanced_stats), 200
+        
     except Exception as e:
-        logging.error(f"Stats error: {str(e)}")
-        return jsonify({'error': f'Stats failed: {str(e)}'}), 500
+        logging.error(f"Admin stats error: {str(e)}")
+        return jsonify({'error': f'Failed to get admin stats: {str(e)}'}), 500
 
 @app.route('/api/admin/files', methods=['GET'])
 @require_firebase_admin
@@ -1408,6 +1533,72 @@ def upload_file_with_user_context(user_id, user_email):
     except Exception as e:
         logging.error(f"Upload error: {str(e)}")
         return jsonify({'error': f'Upload failed: {str(e)}'}), 500
+
+@app.route('/api/user/register', methods=['POST'])
+def track_user_registration():
+    """Track user registration for analytics"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        user_email = data.get('email')
+        
+        if user_id and user_email:
+            visitor_stats.record_user_registration(user_id, user_email)
+            logging.info(f"User registration tracked: {user_email} ({user_id})")
+        
+        return jsonify({'message': 'Registration tracked'}), 200
+    except Exception as e:
+        logging.error(f"Registration tracking error: {str(e)}")
+        return jsonify({'error': 'Failed to track registration'}), 500
+
+@app.route('/api/user/login', methods=['POST'])
+def track_user_login():
+    """Track user login for analytics"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        user_email = data.get('email')
+        
+        # Get visitor IP
+        visitor_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        if visitor_ip and ',' in visitor_ip:
+            visitor_ip = visitor_ip.split(',')[0].strip()
+        
+        # Get or create session ID
+        session_id = session.get('session_id')
+        if not session_id:
+            session_id = str(uuid.uuid4())
+            session['session_id'] = session_id
+        
+        # Store user info in session
+        session['user_id'] = user_id
+        session['user_email'] = user_email
+        
+        if user_id and user_email:
+            visitor_stats.record_user_login(user_id, user_email, session_id, visitor_ip)
+            logging.info(f"User login tracked: {user_email} ({user_id})")
+        
+        return jsonify({'message': 'Login tracked'}), 200
+    except Exception as e:
+        logging.error(f"Login tracking error: {str(e)}")
+        return jsonify({'error': 'Failed to track login'}), 500
+
+@app.route('/api/user/logout', methods=['POST'])
+def track_user_logout():
+    """Track user logout and remove session"""
+    try:
+        session_id = session.get('session_id')
+        if session_id:
+            visitor_stats.remove_session(session_id)
+            logging.info(f"User logout tracked: session {session_id}")
+        
+        # Clear session data
+        session.clear()
+        
+        return jsonify({'message': 'Logout tracked'}), 200
+    except Exception as e:
+        logging.error(f"Logout tracking error: {str(e)}")
+        return jsonify({'error': 'Failed to track logout'}), 500
 
 # Middleware for performance monitoring
 @app.before_request
