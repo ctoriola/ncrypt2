@@ -1303,6 +1303,7 @@ if __name__ == '__main__':
     logging.info(f"Starting NCryp server with {STORAGE_TYPE} storage backend")
     logging.info(f"Server will run on {host}:{port}")
     logging.info(f"Debug mode: {debug}")
+    logging.info(f"PORT environment variable: {os.getenv('PORT', 'Not set')}")
     
     app.run(debug=debug, host=host, port=port)
 else:
