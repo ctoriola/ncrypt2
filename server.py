@@ -62,21 +62,33 @@ try:
     # Initialize Firebase Admin SDK
     firebase_credentials_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
     firebase_project_id = os.getenv('FIREBASE_PROJECT_ID')
+    firebase_credentials_json = os.getenv('FIREBASE_CREDENTIALS_JSON')
+    
+    logger.info(f"Firebase config check - Project ID: {firebase_project_id}")
+    logger.info(f"Firebase config check - Credentials path: {firebase_credentials_path}")
+    logger.info(f"Firebase config check - Credentials JSON exists: {firebase_credentials_json is not None}")
     
     if firebase_credentials_path and os.path.exists(firebase_credentials_path):
         # Use service account file
         cred = credentials.Certificate(firebase_credentials_path)
         firebase_admin.initialize_app(cred)
         logger.info("Firebase Admin SDK initialized with service account file")
-    elif os.getenv('FIREBASE_CREDENTIALS_JSON'):
+    elif firebase_credentials_json:
         # Use JSON credentials from environment variable
         import json
         cred_json_str = os.getenv('FIREBASE_CREDENTIALS_JSON')
         if cred_json_str:
-            cred_json = json.loads(cred_json_str)
-            cred = credentials.Certificate(cred_json)
-            firebase_admin.initialize_app(cred)
-            logger.info("Firebase Admin SDK initialized with JSON credentials")
+            try:
+                cred_json = json.loads(cred_json_str)
+                cred = credentials.Certificate(cred_json)
+                firebase_admin.initialize_app(cred)
+                logger.info("Firebase Admin SDK initialized with JSON credentials")
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON in FIREBASE_CREDENTIALS_JSON: {e}")
+                FIREBASE_AVAILABLE = False
+            except Exception as e:
+                logger.error(f"Error initializing Firebase with JSON credentials: {e}")
+                FIREBASE_AVAILABLE = False
         else:
             logger.warning("FIREBASE_CREDENTIALS_JSON is empty")
             FIREBASE_AVAILABLE = False
