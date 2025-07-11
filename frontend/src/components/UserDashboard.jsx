@@ -24,7 +24,19 @@ export const UserDashboard = ({ onLogout }) => {
   const loadUserFiles = async () => {
     try {
       setLoading(true);
+      console.log('loadUserFiles called');
+      console.log('currentUser:', currentUser);
+      console.log('currentUser type:', typeof currentUser);
+      
+      if (!currentUser) {
+        console.error('No current user available');
+        toast.error('Please log in to view your files');
+        return;
+      }
+      
       const idToken = await currentUser.getIdToken();
+      console.log('Token generated, length:', idToken.length);
+      console.log('Token starts with:', idToken.substring(0, 20) + '...');
       
       const response = await fetch(`${API_BASE_URL}/api/user/files`, {
         headers: {
@@ -32,6 +44,9 @@ export const UserDashboard = ({ onLogout }) => {
           'Content-Type': 'application/json'
         }
       });
+
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
 
       if (response.ok) {
         const data = await response.json();
