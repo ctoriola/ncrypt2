@@ -61,17 +61,37 @@ try:
     
     # Initialize Firebase Admin SDK
     firebase_credentials_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
+    firebase_project_id = os.getenv('FIREBASE_PROJECT_ID')
+    
     if firebase_credentials_path and os.path.exists(firebase_credentials_path):
+        # Use service account file
         cred = credentials.Certificate(firebase_credentials_path)
         firebase_admin.initialize_app(cred)
-        logger.info("Firebase Admin SDK initialized with service account")
+        logger.info("Firebase Admin SDK initialized with service account file")
+    elif os.getenv('FIREBASE_CREDENTIALS_JSON'):
+        # Use JSON credentials from environment variable
+        import json
+        cred_json_str = os.getenv('FIREBASE_CREDENTIALS_JSON')
+        if cred_json_str:
+            cred_json = json.loads(cred_json_str)
+            cred = credentials.Certificate(cred_json)
+            firebase_admin.initialize_app(cred)
+            logger.info("Firebase Admin SDK initialized with JSON credentials")
+        else:
+            logger.warning("FIREBASE_CREDENTIALS_JSON is empty")
+            FIREBASE_AVAILABLE = False
     else:
         # Try to initialize with default credentials (for Railway/Heroku)
         try:
-            firebase_admin.initialize_app()
-            logger.info("Firebase Admin SDK initialized with default credentials")
+            if firebase_project_id:
+                firebase_admin.initialize_app(options={'projectId': firebase_project_id})
+                logger.info(f"Firebase Admin SDK initialized with default credentials for project: {firebase_project_id}")
+            else:
+                firebase_admin.initialize_app()
+                logger.info("Firebase Admin SDK initialized with default credentials")
         except Exception as e:
             logger.warning(f"Firebase Admin SDK initialization failed: {e}")
+            logger.warning("Firebase authentication will be disabled. Set FIREBASE_CREDENTIALS_JSON or FIREBASE_CREDENTIALS_PATH environment variable.")
             FIREBASE_AVAILABLE = False
 except ImportError:
     firebase_admin = None
@@ -1132,7 +1152,9 @@ def require_firebase_user(f):
             
         except Exception as e:
             logging.error(f"User authentication failed: {str(e)}")
-            return jsonify({'error': 'Invalid Firebase token'}), 401
+            logging.error(f"Token length: {len(id_token) if id_token else 0}")
+            logging.error(f"Firebase available: {FIREBASE_AVAILABLE}")
+            return jsonify({'error': f'Invalid Firebase token: {str(e)}'}), 401
     
     return decorated_function
 
@@ -1201,6 +1223,24 @@ def delete_user_file(file_id):
     except Exception as e:
         logging.error(f"User file delete error: {str(e)}")
         return jsonify({'error': f'Failed to delete file: {str(e)}'}), 500
+
+@app.route('/api/user/test-auth', methods=['GET'])
+@require_firebase_user
+def test_user_auth():
+    """Test endpoint to verify Firebase user authentication"""
+    try:
+        user_id = request.firebase_user['uid']
+        user_email = request.firebase_user['email']
+        
+        return jsonify({
+            'message': 'Authentication successful',
+            'user_id': user_id,
+            'email': user_email,
+            'firebase_available': FIREBASE_AVAILABLE
+        }), 200
+    except Exception as e:
+        logging.error(f"Test auth error: {str(e)}")
+        return jsonify({'error': f'Test failed: {str(e)}'}), 500
 
 @app.route('/api/user/upload', methods=['POST'])
 @require_firebase_user
