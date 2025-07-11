@@ -61,49 +61,17 @@ try:
     
     # Initialize Firebase Admin SDK
     firebase_credentials_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
-    firebase_project_id = os.getenv('FIREBASE_PROJECT_ID')
-    firebase_credentials_json = os.getenv('FIREBASE_CREDENTIALS_JSON')
-    
-    logger.info(f"Firebase config check - Project ID: {firebase_project_id}")
-    logger.info(f"Firebase config check - Credentials path: {firebase_credentials_path}")
-    logger.info(f"Firebase config check - Credentials JSON exists: {firebase_credentials_json is not None}")
-    
     if firebase_credentials_path and os.path.exists(firebase_credentials_path):
-        # Use service account file
         cred = credentials.Certificate(firebase_credentials_path)
         firebase_admin.initialize_app(cred)
-        logger.info("Firebase Admin SDK initialized with service account file")
-    elif firebase_credentials_json:
-        # Use JSON credentials from environment variable
-        import json
-        cred_json_str = os.getenv('FIREBASE_CREDENTIALS_JSON')
-        if cred_json_str:
-            try:
-                cred_json = json.loads(cred_json_str)
-                cred = credentials.Certificate(cred_json)
-                firebase_admin.initialize_app(cred)
-                logger.info("Firebase Admin SDK initialized with JSON credentials")
-            except json.JSONDecodeError as e:
-                logger.error(f"Invalid JSON in FIREBASE_CREDENTIALS_JSON: {e}")
-                FIREBASE_AVAILABLE = False
-            except Exception as e:
-                logger.error(f"Error initializing Firebase with JSON credentials: {e}")
-                FIREBASE_AVAILABLE = False
-        else:
-            logger.warning("FIREBASE_CREDENTIALS_JSON is empty")
-            FIREBASE_AVAILABLE = False
+        logger.info("Firebase Admin SDK initialized with service account")
     else:
         # Try to initialize with default credentials (for Railway/Heroku)
         try:
-            if firebase_project_id:
-                firebase_admin.initialize_app(options={'projectId': firebase_project_id})
-                logger.info(f"Firebase Admin SDK initialized with default credentials for project: {firebase_project_id}")
-            else:
-                firebase_admin.initialize_app()
-                logger.info("Firebase Admin SDK initialized with default credentials")
+            firebase_admin.initialize_app()
+            logger.info("Firebase Admin SDK initialized with default credentials")
         except Exception as e:
             logger.warning(f"Firebase Admin SDK initialization failed: {e}")
-            logger.warning("Firebase authentication will be disabled. Set FIREBASE_CREDENTIALS_JSON or FIREBASE_CREDENTIALS_PATH environment variable.")
             FIREBASE_AVAILABLE = False
 except ImportError:
     firebase_admin = None
@@ -143,13 +111,11 @@ app.config['SESSION_COOKIE_DOMAIN'] = None  # Let Flask set the domain automatic
 # CORS Configuration for production
 CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*')
 if CORS_ORIGINS == '*':
-    CORS(app, origins=['*'], supports_credentials=True, methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
+    CORS(app, origins=['*'], supports_credentials=True)
 else:
     # Parse multiple origins if provided
     origins = [origin.strip() for origin in CORS_ORIGINS.split(',')]
-    CORS(app, origins=origins, supports_credentials=True, methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
-
-
+    CORS(app, origins=origins, supports_credentials=True)
 
 # Configuration
 ALLOWED_MIME_TYPES = {
@@ -1166,9 +1132,7 @@ def require_firebase_user(f):
             
         except Exception as e:
             logging.error(f"User authentication failed: {str(e)}")
-            logging.error(f"Token length: {len(id_token) if id_token else 0}")
-            logging.error(f"Firebase available: {FIREBASE_AVAILABLE}")
-            return jsonify({'error': f'Invalid Firebase token: {str(e)}'}), 401
+            return jsonify({'error': 'Invalid Firebase token'}), 401
     
     return decorated_function
 
@@ -1182,20 +1146,20 @@ def get_user_files():
         
         logging.info(f"User files request from {user_email} ({user_id})")
         
-        # Filter files by user_id
+        # Filter files by user_id (if stored) or return all files for now
+        # In a real implementation, you'd store user_id with each file
         user_files = []
         for file_id, metadata in file_metadata.items():
-            # Check if the file belongs to this user
-            if metadata.get('user_id') == user_id:
-                user_files.append({
-                    'id': file_id,
-                    'share_id': metadata.get('share_id'),
-                    'filename': metadata['filename'],
-                    'size': metadata['size'],
-                    'upload_date': metadata['upload_date'],
-                    'encrypted': metadata.get('encrypted', False),
-                    'mime_type': metadata.get('mime_type', 'unknown')
-                })
+            # For now, return all files. In production, filter by user_id
+            user_files.append({
+                'id': file_id,
+                'share_id': metadata.get('share_id'),
+                'filename': metadata['filename'],
+                'size': metadata['size'],
+                'upload_date': metadata['upload_date'],
+                'encrypted': metadata.get('encrypted', False),
+                'mime_type': metadata.get('mime_type', 'unknown')
+            })
         
         logging.info(f"Returning {len(user_files)} files for user {user_email}")
         return jsonify({'files': user_files}), 200
@@ -1217,11 +1181,8 @@ def delete_user_file(file_id):
         if file_id not in file_metadata:
             return jsonify({'error': 'File not found'}), 404
         
-        # Check if the user owns this file
-        file_metadata_item = file_metadata[file_id]
-        if file_metadata_item.get('user_id') != user_id:
-            logging.warning(f"User {user_email} attempted to delete file {file_id} they don't own")
-            return jsonify({'error': 'You can only delete your own files'}), 403
+        # In a real implementation, you'd check if the user owns this file
+        # For now, allow deletion of any file
         
         # Delete from storage
         try:
@@ -1237,76 +1198,6 @@ def delete_user_file(file_id):
     except Exception as e:
         logging.error(f"User file delete error: {str(e)}")
         return jsonify({'error': f'Failed to delete file: {str(e)}'}), 500
-
-@app.route('/api/user/test-auth', methods=['GET'])
-@require_firebase_user
-def test_user_auth():
-    """Test endpoint to verify Firebase user authentication"""
-    try:
-        user_id = request.firebase_user['uid']
-        user_email = request.firebase_user['email']
-        
-        return jsonify({
-            'message': 'Authentication successful',
-            'user_id': user_id,
-            'email': user_email,
-            'firebase_available': FIREBASE_AVAILABLE
-        }), 200
-    except Exception as e:
-        logging.error(f"Test auth error: {str(e)}")
-        return jsonify({'error': f'Test failed: {str(e)}'}), 500
-
-@app.route('/api/test-token', methods=['POST'])
-def test_token():
-    """Test endpoint to debug Firebase token issues"""
-    try:
-        auth_header = request.headers.get('Authorization')
-        
-        return jsonify({
-            'message': 'Token test',
-            'has_auth_header': auth_header is not None,
-            'auth_header_starts_with_bearer': auth_header.startswith('Bearer ') if auth_header else False,
-            'token_length': len(auth_header.split('Bearer ')[1]) if auth_header and auth_header.startswith('Bearer ') else 0,
-            'firebase_available': FIREBASE_AVAILABLE,
-            'timestamp': datetime.utcnow().isoformat()
-        }), 200
-    except Exception as e:
-        return jsonify({'error': f'Token test failed: {str(e)}'}), 500
-
-@app.route('/api/test', methods=['GET'])
-def test_endpoint():
-    """Simple test endpoint to verify backend is working"""
-    try:
-        return jsonify({
-            'message': 'Backend is working!',
-            'timestamp': datetime.utcnow().isoformat(),
-            'firebase_available': FIREBASE_AVAILABLE,
-            'environment': os.getenv('FLASK_ENV', 'production')
-        }), 200
-    except Exception as e:
-        return jsonify({'error': f'Test failed: {str(e)}'}), 500
-
-@app.route('/api/test-upload', methods=['POST'])
-def test_upload():
-    """Test upload endpoint without Firebase authentication"""
-    try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file provided'}), 400
-        
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        
-        # Simple file info response
-        return jsonify({
-            'message': 'Test upload successful',
-            'filename': file.filename,
-            'size': len(file.read()),
-            'timestamp': datetime.utcnow().isoformat()
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': f'Test upload failed: {str(e)}'}), 500
 
 @app.route('/api/user/upload', methods=['POST'])
 @require_firebase_user
@@ -1403,12 +1294,6 @@ def before_request():
 @app.after_request
 def after_request(response):
     performance_monitor.end_request(request.endpoint)
-    
-    # Add CORS headers
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-    response.headers['Access-Control-Allow-Credentials'] = 'true'
     
     # Add performance headers
     response.headers['X-Response-Time'] = str(time.time() - performance_monitor.request_times.get(request.endpoint, time.time()))

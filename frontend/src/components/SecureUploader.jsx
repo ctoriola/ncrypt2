@@ -1,7 +1,6 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { toast } from 'react-toastify';
-import { useAuth } from '../contexts/AuthContext';
 import './SecureUploader.css';
 
 // API base URL - use environment variable or default to Railway backend
@@ -28,7 +27,6 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 const MIN_PASSPHRASE_LENGTH = 8;
 
 export const SecureUploader = React.memo(({ onUploadComplete }) => {
-  const { currentUser } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentFile, setCurrentFile] = useState(null);
@@ -101,10 +99,6 @@ export const SecureUploader = React.memo(({ onUploadComplete }) => {
       setProgress(0);
       setCurrentFile(file);
 
-      console.log('handleFileUpload called');
-      console.log('currentUser:', currentUser);
-      console.log('currentUser type:', typeof currentUser);
-
       // Encrypt file in main thread (simpler approach)
       const encryptedFile = await encryptFile(file, passphrase);
       
@@ -115,44 +109,17 @@ export const SecureUploader = React.memo(({ onUploadComplete }) => {
       const formData = new FormData();
       formData.append('file', encryptedFile, file.name + '.encrypted');
 
-      // Determine upload endpoint and headers based on authentication
-      let uploadUrl = `${API_BASE_URL}/api/upload`;
-      let headers = {};
-
-      if (currentUser) {
-        console.log('User is logged in, using authenticated endpoint');
-        // Use user-specific endpoint with authentication
-        uploadUrl = `${API_BASE_URL}/api/user/upload`;
-        const idToken = await currentUser.getIdToken();
-        console.log('Token generated, length:', idToken.length);
-        console.log('Token starts with:', idToken.substring(0, 20) + '...');
-        headers = {
-          'Authorization': `Bearer ${idToken}`
-        };
-      } else {
-        console.log('No user logged in, using public endpoint');
-      }
-
-      console.log('Upload URL:', uploadUrl);
-      console.log('Headers:', headers);
-
-      const response = await fetch(uploadUrl, {
+      const response = await fetch(`${API_BASE_URL}/api/upload`, {
         method: 'POST',
-        headers,
         body: formData
       });
 
-      console.log('Upload response status:', response.status);
-      console.log('Upload response headers:', response.headers);
-
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('Upload error response:', errorData);
         throw new Error(errorData.error || 'Upload failed');
       }
 
       const result = await response.json();
-      console.log('Upload success response:', result);
       
       setProgress(100);
       setUploading(false);
@@ -180,13 +147,12 @@ export const SecureUploader = React.memo(({ onUploadComplete }) => {
       onUploadComplete();
 
     } catch (error) {
-      console.error('Upload error:', error);
       setUploading(false);
       setProgress(0);
       setCurrentFile(null);
       toast.error(`Upload failed: ${error.message}`);
     }
-  }, [encryptFile, onUploadComplete, currentUser]);
+  }, [encryptFile, onUploadComplete]);
 
   // Memoized drop handler
   const onDrop = useCallback(async (acceptedFiles) => {
