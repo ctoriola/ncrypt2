@@ -143,11 +143,13 @@ app.config['SESSION_COOKIE_DOMAIN'] = None  # Let Flask set the domain automatic
 # CORS Configuration for production
 CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*')
 if CORS_ORIGINS == '*':
-    CORS(app, origins=['*'], supports_credentials=True)
+    CORS(app, origins=['*'], supports_credentials=True, methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
 else:
     # Parse multiple origins if provided
     origins = [origin.strip() for origin in CORS_ORIGINS.split(',')]
-    CORS(app, origins=origins, supports_credentials=True)
+    CORS(app, origins=origins, supports_credentials=True, methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
+
+
 
 # Configuration
 ALLOWED_MIME_TYPES = {
@@ -1401,6 +1403,12 @@ def before_request():
 @app.after_request
 def after_request(response):
     performance_monitor.end_request(request.endpoint)
+    
+    # Add CORS headers
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
     
     # Add performance headers
     response.headers['X-Response-Time'] = str(time.time() - performance_monitor.request_times.get(request.endpoint, time.time()))
