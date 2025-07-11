@@ -1146,20 +1146,20 @@ def get_user_files():
         
         logging.info(f"User files request from {user_email} ({user_id})")
         
-        # Filter files by user_id (if stored) or return all files for now
-        # In a real implementation, you'd store user_id with each file
+        # Filter files by user_id
         user_files = []
         for file_id, metadata in file_metadata.items():
-            # For now, return all files. In production, filter by user_id
-            user_files.append({
-                'id': file_id,
-                'share_id': metadata.get('share_id'),
-                'filename': metadata['filename'],
-                'size': metadata['size'],
-                'upload_date': metadata['upload_date'],
-                'encrypted': metadata.get('encrypted', False),
-                'mime_type': metadata.get('mime_type', 'unknown')
-            })
+            # Check if the file belongs to this user
+            if metadata.get('user_id') == user_id:
+                user_files.append({
+                    'id': file_id,
+                    'share_id': metadata.get('share_id'),
+                    'filename': metadata['filename'],
+                    'size': metadata['size'],
+                    'upload_date': metadata['upload_date'],
+                    'encrypted': metadata.get('encrypted', False),
+                    'mime_type': metadata.get('mime_type', 'unknown')
+                })
         
         logging.info(f"Returning {len(user_files)} files for user {user_email}")
         return jsonify({'files': user_files}), 200
@@ -1181,8 +1181,11 @@ def delete_user_file(file_id):
         if file_id not in file_metadata:
             return jsonify({'error': 'File not found'}), 404
         
-        # In a real implementation, you'd check if the user owns this file
-        # For now, allow deletion of any file
+        # Check if the user owns this file
+        file_metadata_item = file_metadata[file_id]
+        if file_metadata_item.get('user_id') != user_id:
+            logging.warning(f"User {user_email} attempted to delete file {file_id} they don't own")
+            return jsonify({'error': 'You can only delete your own files'}), 403
         
         # Delete from storage
         try:

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { toast } from 'react-toastify';
+import { useAuth } from '../contexts/AuthContext';
 import './SecureUploader.css';
 
 // API base URL - use environment variable or default to Railway backend
@@ -27,6 +28,7 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 const MIN_PASSPHRASE_LENGTH = 8;
 
 export const SecureUploader = React.memo(({ onUploadComplete }) => {
+  const { currentUser } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentFile, setCurrentFile] = useState(null);
@@ -109,8 +111,22 @@ export const SecureUploader = React.memo(({ onUploadComplete }) => {
       const formData = new FormData();
       formData.append('file', encryptedFile, file.name + '.encrypted');
 
-      const response = await fetch(`${API_BASE_URL}/api/upload`, {
+      // Determine upload endpoint and headers based on authentication
+      let uploadUrl = `${API_BASE_URL}/api/upload`;
+      let headers = {};
+
+      if (currentUser) {
+        // Use user-specific endpoint with authentication
+        uploadUrl = `${API_BASE_URL}/api/user/upload`;
+        const idToken = await currentUser.getIdToken();
+        headers = {
+          'Authorization': `Bearer ${idToken}`
+        };
+      }
+
+      const response = await fetch(uploadUrl, {
         method: 'POST',
+        headers,
         body: formData
       });
 
@@ -152,7 +168,7 @@ export const SecureUploader = React.memo(({ onUploadComplete }) => {
       setCurrentFile(null);
       toast.error(`Upload failed: ${error.message}`);
     }
-  }, [encryptFile, onUploadComplete]);
+  }, [encryptFile, onUploadComplete, currentUser]);
 
   // Memoized drop handler
   const onDrop = useCallback(async (acceptedFiles) => {
