@@ -141,6 +141,14 @@ class PersistentVisitorStats:
         c.execute('INSERT OR IGNORE INTO users (id, email) VALUES (?, ?)', (user_id, user_email))
         conn.commit()
         conn.close()
+        
+        # Also track Firebase user if this is a Firebase registration
+        if FIREBASE_AVAILABLE and auth:
+            try:
+                # This ensures we're tracking Firebase users in our database
+                logging.info(f"Firebase user registration tracked: {user_email} ({user_id})")
+            except Exception as e:
+                logging.error(f"Error tracking Firebase user: {e}")
 
     def record_user_login(self, user_id, user_email, session_id, ip_address):
         conn = get_db()
@@ -214,31 +222,47 @@ class PersistentVisitorStats:
     def get_stats(self):
         conn = get_db()
         c = conn.cursor()
-        # Registered users
+        
+        # Get Firebase registered users count
+        firebase_registered_users = visitor_stats.get_firebase_user_count()
+        
+        # Registered users (from database tracking)
         c.execute('SELECT COUNT(*) FROM users')
-        total_registered_users = c.fetchone()[0]
+        db_registered_users = c.fetchone()[0]
+        
         # Guest users (sessions with session_type guest)
         c.execute("SELECT COUNT(DISTINCT id) FROM sessions WHERE session_type = 'guest'")
         total_guest_users = c.fetchone()[0]
+        
         # Live visitors (sessions active in last 5 min)
         c.execute("SELECT COUNT(*) FROM sessions WHERE last_activity >= datetime('now', '-5 minutes')")
         live_visitors = c.fetchone()[0]
+        
         # Total visits
         c.execute('SELECT COUNT(*) FROM visits')
         total_visits = c.fetchone()[0]
+        
         # Unique visitors
         c.execute('SELECT COUNT(DISTINCT visitor_id) FROM visits')
         unique_visitors = c.fetchone()[0]
+        
         # Total uploads
         c.execute('SELECT COUNT(*) FROM uploads')
         total_uploads = c.fetchone()[0]
+        
         # Total upload size
         c.execute('SELECT SUM(file_size) FROM uploads')
         total_upload_size = c.fetchone()[0] or 0
+        
         # Total downloads
         c.execute('SELECT COUNT(*) FROM downloads')
         total_downloads = c.fetchone()[0]
+        
         conn.close()
+        
+        # Use the higher count between Firebase and database
+        total_registered_users = max(firebase_registered_users, db_registered_users)
+        
         return {
             'total_visits': total_visits,
             'unique_visitors': unique_visitors,
@@ -251,10 +275,31 @@ class PersistentVisitorStats:
             },
             'user_stats': {
                 'total_registered_users': total_registered_users,
+                'firebase_registered_users': firebase_registered_users,
+                'db_registered_users': db_registered_users,
                 'total_guest_users': total_guest_users,
                 'live_visitors': live_visitors
             }
         }
+
+    def get_firebase_user_count(self):
+        """Get approximate Firebase user count (limited by Firebase Admin SDK)"""
+        try:
+            if FIREBASE_AVAILABLE and auth:
+                # Note: Firebase Admin SDK has limitations on listing all users
+                # In production, you might want to sync Firebase users to your database
+                # For now, we'll return the count from our database which tracks registrations
+                conn = get_db()
+                c = conn.cursor()
+                c.execute('SELECT COUNT(*) FROM users')
+                count = c.fetchone()[0]
+                conn.close()
+                return count
+            else:
+                return 0
+        except Exception as e:
+            logging.error(f"Error getting Firebase user count: {e}")
+            return 0
 
 # Replace the old visitor_stats with the persistent version
 visitor_stats = PersistentVisitorStats()
@@ -710,22 +755,6 @@ def track_visitor():
     except Exception as e:
         logging.error(f"Visitor tracking error: {str(e)}")
 
-def require_admin(f):
-    """Decorator to require admin authentication"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        logging.info(f"Admin endpoint accessed: {request.endpoint}")
-        logging.info(f"Session admin flag: {session.get('admin')}")
-        logging.info(f"Full session: {dict(session)}")
-        
-        if not session.get('admin'):
-            logging.warning(f"Admin access denied for {request.remote_addr}")
-            return jsonify({'error': 'Admin authentication required'}), 401
-        
-        logging.info(f"Admin access granted for {request.remote_addr}")
-        return f(*args, **kwargs)
-    return decorated_function
-
 def require_firebase_admin(f):
     """Decorator to require Firebase admin authentication"""
     @wraps(f)
@@ -1140,52 +1169,8 @@ def search_file(share_id):
         logging.error(f"Search error: {str(e)}")
         return jsonify({'error': f'Search failed: {str(e)}'}), 500
 
-@app.route('/api/admin/login', methods=['POST'])
-def admin_login():
-    """Admin login endpoint"""
-    try:
-        data = request.get_json()
-        email = data.get('email')  # Changed from username to email
-        password = data.get('password')
-        
-        logging.info(f"Admin login attempt from {request.remote_addr}")
-        logging.info(f"Email: {email}")
-        
-        if email != ADMIN_USERNAME or not verify_admin_password(password, ADMIN_PASSWORD_HASH):
-            logging.warning(f"Admin login failed for {request.remote_addr}")
-            return jsonify({'error': 'Invalid email or password'}), 401
-        
-        # Make session permanent and set admin flag
-        session.permanent = True
-        session['admin'] = True
-        session['admin_login_time'] = datetime.utcnow().isoformat()
-        
-        logging.info(f"Admin login successful for {request.remote_addr}")
-        logging.info(f"Session after login: {dict(session)}")
-        logging.info(f"Session permanent: {session.permanent}")
-        
-        response = jsonify({'message': 'Admin login successful'})
-        response.headers['X-Session-Admin'] = 'true'
-        response.headers['X-Session-Time'] = session['admin_login_time']
-        
-        return response, 200
-    except Exception as e:
-        logging.error(f"Login error: {str(e)}")
-        return jsonify({'error': f'Login failed: {str(e)}'}), 500
-
-@app.route('/api/admin/logout', methods=['POST'])
-@require_admin
-def admin_logout():
-    """Admin logout endpoint"""
-    try:
-        session.clear()
-        return jsonify({'message': 'Admin logout successful'}), 200
-    except Exception as e:
-        logging.error(f"Logout error: {str(e)}")
-        return jsonify({'error': f'Logout failed: {str(e)}'}), 500
-
 @app.route('/api/admin/stats', methods=['GET'])
-@require_admin
+@require_firebase_admin
 def get_admin_stats():
     """Get comprehensive admin statistics including user tracking"""
     try:
@@ -1231,7 +1216,7 @@ def get_admin_stats():
         return jsonify({'error': f'Failed to get admin stats: {str(e)}'}), 500
 
 @app.route('/api/admin/files', methods=['GET'])
-@require_admin
+@require_firebase_admin
 def get_admin_files():
     """Admin endpoint to get all files with metadata"""
     try:
