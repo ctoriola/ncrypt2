@@ -55,7 +55,14 @@ export const AdminDashboard = ({ onLogout }) => {
       } else {
         const errorData = await statsResponse.text();
         console.error('Stats error response:', errorData);
-        toast.error('Failed to load statistics');
+        
+        if (statsResponse.status === 403) {
+          toast.error('Access denied. You do not have admin privileges.');
+          // Redirect to login or show access denied message
+          onLogout();
+        } else {
+          toast.error('Failed to load statistics');
+        }
       }
 
       if (filesResponse.ok) {
@@ -64,7 +71,14 @@ export const AdminDashboard = ({ onLogout }) => {
       } else {
         const errorData = await filesResponse.text();
         console.error('Files error response:', errorData);
-        toast.error('Failed to load files');
+        
+        if (filesResponse.status === 403) {
+          toast.error('Access denied. You do not have admin privileges.');
+          // Redirect to login or show access denied message
+          onLogout();
+        } else {
+          toast.error('Failed to load files');
+        }
       }
     } catch (error) {
       console.error('Dashboard data error:', error);

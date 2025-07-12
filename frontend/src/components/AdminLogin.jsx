@@ -66,7 +66,7 @@ export const AdminLogin = ({ onLoginSuccess }) => {
             <path d="M2 12l10 5 10-5"></path>
           </svg>
           <h2>Admin Dashboard</h2>
-          <p>Enter your Firebase credentials to access the admin panel</p>
+          <p>Enter your Firebase admin credentials to access the admin panel</p>
         </div>
 
         <form onSubmit={handleSubmit} className="admin-login-form">
@@ -110,8 +110,11 @@ export const AdminLogin = ({ onLoginSuccess }) => {
 
         <div className="admin-login-info">
           <p>
-            <strong>Note:</strong> This admin panel uses Firebase Authentication. 
-            Make sure you have created an admin user in your Firebase project.
+            <strong>Note:</strong> This admin panel requires Firebase admin credentials. 
+            Only authorized admin users can access this dashboard.
+          </p>
+          <p>
+            <strong>Admin Email:</strong> toriola333@gmail.com
           </p>
         </div>
       </div>

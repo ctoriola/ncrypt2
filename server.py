@@ -781,6 +781,14 @@ def require_firebase_admin(f):
             
             logging.info(f"Firebase authentication successful for user: {email} ({user_id})")
             
+            # Check if the user is an admin
+            admin_emails = [ADMIN_USERNAME]  # Add more admin emails here if needed
+            if email not in admin_emails:
+                logging.warning(f"Non-admin user {email} attempted to access admin endpoint")
+                return jsonify({'error': 'Admin access required'}), 403
+            
+            logging.info(f"Admin access granted for {email}")
+            
             # Store user info in request context for use in the endpoint
             setattr(request, 'firebase_user', {
                 'uid': user_id,
