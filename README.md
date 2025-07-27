@@ -72,16 +72,25 @@ Visit [https://ncryp.netlify.app](https://ncryp.netlify.app) to use the applicat
 
 1. **Fork this repository** on GitHub
 
-2. **Deploy Backend to Railway**:
+2. **Deploy Backend**:
+   
+   **Option A: Railway**
    - Go to [Railway.app](https://railway.app)
    - Connect your forked repository
    - Set environment variables (see [DEPLOYMENT.md](DEPLOYMENT.md))
    - Get your Railway URL
+   
+   **Option B: Vercel** (Recommended)
+   - Go to [Vercel.com](https://vercel.com)
+   - Connect your forked repository
+   - Set environment variables (see [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md))
+   - **Important**: Configure cloud storage (S3/GCS/Azure) as Vercel doesn't support local storage
+   - Get your Vercel URL
 
 3. **Deploy Frontend to Netlify**:
    - Go to [Netlify.com](https://netlify.com)
    - Connect your forked repository
-   - Set `VITE_API_URL` to your Railway URL
+   - Set `VITE_API_URL` to your backend URL (Railway or Vercel)
    - Deploy
 
 4. **Set up Admin Access**:
@@ -90,7 +99,7 @@ Visit [https://ncryp.netlify.app](https://ncryp.netlify.app) to use the applicat
    # Add the generated hash to Railway environment variables
    ```
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for Railway deployment or [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md) for Vercel deployment instructions.
 
 ## 🔧 Local Development
 
@@ -318,9 +327,9 @@ See [STORAGE_SETUP.md](STORAGE_SETUP.md) for detailed setup instructions.
 
 ### Production Deployment
 - **Frontend**: Deployed on Netlify with automatic HTTPS
-- **Backend**: Deployed on Railway with automatic scaling
-- **Storage**: Supports local, S3, GCS, and Azure storage
-- **Monitoring**: Built-in admin dashboard and Railway metrics
+- **Backend**: Deployed on Railway or Vercel with automatic scaling
+- **Storage**: Supports local (Railway only), S3, GCS, and Azure storage
+- **Monitoring**: Built-in admin dashboard and platform metrics
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for complete deployment instructions.
 

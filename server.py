@@ -325,9 +325,10 @@ FILE_EXTENSIONS = {
 }
 
 # Storage Configuration
-STORAGE_TYPE = os.getenv('STORAGE_TYPE', 'local').lower()  # local, s3, gcs, azure
+# For Vercel, default to S3 since local storage is not persistent in serverless
+STORAGE_TYPE = os.getenv('STORAGE_TYPE', 's3' if os.getenv('VERCEL') else 'local').lower()  # local, s3, gcs, azure
 
-# Local Storage Configuration - Use absolute path for Railway compatibility
+# Local Storage Configuration - Use absolute path for Railway/Vercel compatibility
 if STORAGE_TYPE == 'local':
     # Use /tmp for Railway or absolute path for better compatibility
     LOCAL_STORAGE_PATH = os.getenv('LOCAL_STORAGE_PATH', '/tmp/ncryp-uploads')
@@ -1651,20 +1652,23 @@ def handle_exception(e):
     logger.error(f"Unhandled exception: {e}")
     return jsonify({'error': 'Internal server error'}), 500
 
+# Initialize storage on module load for serverless compatibility
+if STORAGE_TYPE == 's3' and s3_client:
+    try:
+        s3_client.head_bucket(Bucket=SECURE_BUCKET)
+    except Exception:
+        try:
+            s3_client.create_bucket(Bucket=SECURE_BUCKET)
+            logging.info(f"Created S3 bucket: {SECURE_BUCKET}")
+        except Exception as e:
+            logging.warning(f"Could not create S3 bucket: {e}")
+
 if __name__ == '__main__':
     # Configure logging
     log_level = os.getenv('LOG_LEVEL', 'INFO')
     logging.basicConfig(level=getattr(logging, log_level.upper()))
     
-    # Create S3 bucket if using S3 and it doesn't exist
-    if STORAGE_TYPE == 's3' and s3_client:
-        try:
-            s3_client.head_bucket(Bucket=SECURE_BUCKET)
-        except Exception:
-            s3_client.create_bucket(Bucket=SECURE_BUCKET)
-            logging.info(f"Created S3 bucket: {SECURE_BUCKET}")
-    
-    # Get port from environment (Railway sets PORT)
+    # Get port from environment (Railway sets PORT, Vercel uses serverless)
     port = int(os.getenv('PORT', 5000))
     host = os.getenv('HOST', '0.0.0.0')
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
@@ -1675,8 +1679,9 @@ if __name__ == '__main__':
     
     app.run(debug=debug, host=host, port=port)
 else:
-    # When running with gunicorn, log initialization
+    # When running with gunicorn or Vercel, log initialization
     logging.basicConfig(level=logging.INFO)
     logging.info("NCryp server module loaded successfully")
     logging.info(f"Storage type: {STORAGE_TYPE}")
     logging.info(f"Firebase available: {FIREBASE_AVAILABLE}")
+    logging.info(f"Running on Vercel: {bool(os.getenv('VERCEL'))}")
