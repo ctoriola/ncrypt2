@@ -348,6 +348,11 @@ FILE_EXTENSIONS = {
 # For Vercel, default to S3 since local storage is not persistent in serverless
 STORAGE_TYPE = os.getenv('STORAGE_TYPE', 's3' if os.getenv('VERCEL') else 'local').lower()  # local, s3, gcs, azure
 
+# Vercel compatibility: avoid persistent state, use S3 for uploads/downloads
+if STORAGE_TYPE == 'local' and os.getenv('VERCEL'):
+    STORAGE_TYPE = 's3'
+    logger.info("Defaulting to S3 storage on Vercel")
+
 # Local Storage Configuration - Use absolute path for Railway/Vercel compatibility
 if STORAGE_TYPE == 'local':
     # Use /tmp for Railway or absolute path for better compatibility
@@ -1684,20 +1689,8 @@ if STORAGE_TYPE == 's3' and s3_client:
             logging.warning(f"Could not create S3 bucket: {e}")
 
 if __name__ == '__main__':
-    # Configure logging
-    log_level = os.getenv('LOG_LEVEL', 'INFO')
-    logging.basicConfig(level=getattr(logging, log_level.upper()))
-    
-    # Get port from environment (Railway sets PORT, Vercel uses serverless)
-    port = int(os.getenv('PORT', 5000))
-    host = os.getenv('HOST', '0.0.0.0')
-    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-    
-    logging.info(f"Starting NCryp server with {STORAGE_TYPE} storage backend")
-    logging.info(f"Server will run on {host}:{port}")
-    logging.info(f"Debug mode: {debug}")
-    
-    app.run(debug=debug, host=host, port=port)
+    # For local development only
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)
 else:
     # When running with gunicorn or Vercel, log initialization
     logging.basicConfig(level=logging.INFO)
