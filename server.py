@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 
 logger.info("Starting NCryp server initialization...")
 
+app = Flask(__name__)
+app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
+
 # CORS configuration
 CORS(app, resources={
     r"/api/*": {
