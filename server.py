@@ -1,3 +1,4 @@
+import traceback
 import os
 import re
 import uuid
@@ -1638,9 +1639,14 @@ def after_request(response):
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    performance_monitor.record_error(request.endpoint)
+    performance_monitor.record_error(getattr(request, 'endpoint', None))
     logger.error(f"Unhandled exception: {e}")
-    return jsonify({'error': 'Internal server error'}), 500
+    tb = traceback.format_exc()
+    return jsonify({
+        'error': 'Internal server error',
+        'exception': str(e),
+        'traceback': tb
+    }), 500
 
 # Initialize storage on module load for serverless compatibility
 if STORAGE_TYPE == 's3' and s3_client:
