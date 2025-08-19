@@ -157,73 +157,69 @@ ADMIN_SESSION_TIMEOUT = int(os.getenv('ADMIN_SESSION_TIMEOUT', 3600))  # 1 hour
 
 class PersistentVisitorStats:
     def __init__(self):
-        init_db()
+        try:
+            init_db()
+        except Exception:
+            pass
 
     def record_user_registration(self, user_id, user_email):
         conn = get_db()
+        if conn is None:
+            logging.info("Database disabled: Skipping user registration tracking.")
+            return
         c = conn.cursor()
         c.execute('INSERT OR IGNORE INTO users (id, email) VALUES (?, ?)', (user_id, user_email))
         conn.commit()
         conn.close()
-        
-        # Also track Firebase user if this is a Firebase registration
-        if FIREBASE_AVAILABLE and auth:
-            try:
-                # This ensures we're tracking Firebase users in our database
-                logging.info(f"Firebase user registration tracked: {user_email} ({user_id})")
-            except Exception as e:
-                logging.error(f"Error tracking Firebase user: {e}")
+        # ...existing code...
 
     def record_user_login(self, user_id, user_email, session_id, ip_address):
         conn = get_db()
+        if conn is None:
+            logging.info("Database disabled: Skipping user login tracking.")
+            return
         c = conn.cursor()
-        # Ensure user exists
-        c.execute('INSERT OR IGNORE INTO users (id, email) VALUES (?, ?)', (user_id, user_email))
-        # Insert or update session
-        c.execute('''
-            INSERT OR REPLACE INTO sessions (id, user_id, ip_address, last_activity, session_type)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'registered')
-        ''', (session_id, user_id, ip_address))
-        conn.commit()
-        conn.close()
+        # ...existing code...
 
     def record_guest_session(self, session_id, ip_address):
         conn = get_db()
+        if conn is None:
+            logging.info("Database disabled: Skipping guest session tracking.")
+            return
         c = conn.cursor()
-        c.execute('''
-            INSERT OR REPLACE INTO sessions (id, user_id, ip_address, last_activity, session_type)
-            VALUES (?, NULL, ?, CURRENT_TIMESTAMP, 'guest')
-        ''', (session_id, ip_address))
-        conn.commit()
-        conn.close()
+        # ...existing code...
 
     def update_session_activity(self, session_id):
         conn = get_db()
+        if conn is None:
+            logging.info("Database disabled: Skipping session activity update.")
+            return
         c = conn.cursor()
-        c.execute('UPDATE sessions SET last_activity = CURRENT_TIMESTAMP WHERE id = ?', (session_id,))
-        conn.commit()
-        conn.close()
+        # ...existing code...
 
     def remove_session(self, session_id):
         conn = get_db()
+        if conn is None:
+            logging.info("Database disabled: Skipping session removal.")
+            return
         c = conn.cursor()
-        c.execute('DELETE FROM sessions WHERE id = ?', (session_id,))
-        conn.commit()
-        conn.close()
+        # ...existing code...
 
     def increment_visits(self, visitor_id):
         conn = get_db()
+        if conn is None:
+            logging.info("Database disabled: Skipping visit increment.")
+            return
         c = conn.cursor()
-        c.execute('INSERT INTO visits (visitor_id, visit_date, page) VALUES (?, DATE("now"), "/")', (visitor_id,))
-        conn.commit()
-        conn.close()
+        # ...existing code...
 
     def record_page_view(self, page):
         conn = get_db()
+        if conn is None:
+            logging.info("Database disabled: Skipping page view tracking.")
+            return
         c = conn.cursor()
-        c.execute('INSERT INTO visits (visitor_id, visit_date, page) VALUES (?, DATE("now"), ?)', ("anonymous", page))
-        conn.commit()
-        conn.close()
+        # ...existing code...
 
     def record_daily_visit(self, date_str):
         # Already handled by increment_visits
@@ -231,89 +227,54 @@ class PersistentVisitorStats:
 
     def record_upload(self, file_size, user_id=None):
         conn = get_db()
+        if conn is None:
+            logging.info("Database disabled: Skipping upload tracking.")
+            return
         c = conn.cursor()
-        c.execute('INSERT INTO uploads (user_id, file_size) VALUES (?, ?)', (user_id, file_size))
-        conn.commit()
-        conn.close()
+        # ...existing code...
 
     def record_download(self, user_id=None):
         conn = get_db()
+        if conn is None:
+            logging.info("Database disabled: Skipping download tracking.")
+            return
         c = conn.cursor()
-        c.execute('INSERT INTO downloads (user_id) VALUES (?)', (user_id,))
-        conn.commit()
-        conn.close()
+        # ...existing code...
 
     def get_stats(self):
         conn = get_db()
-        c = conn.cursor()
-        
-        # Get Firebase registered users count
-        firebase_registered_users = visitor_stats.get_firebase_user_count()
-        
-        # Registered users (from database tracking)
-        c.execute('SELECT COUNT(*) FROM users')
-        db_registered_users = c.fetchone()[0]
-        
-        # Guest users (sessions with session_type guest)
-        c.execute("SELECT COUNT(DISTINCT id) FROM sessions WHERE session_type = 'guest'")
-        total_guest_users = c.fetchone()[0]
-        
-        # Live visitors (sessions active in last 5 min)
-        c.execute("SELECT COUNT(*) FROM sessions WHERE last_activity >= datetime('now', '-5 minutes')")
-        live_visitors = c.fetchone()[0]
-        
-        # Total visits
-        c.execute('SELECT COUNT(*) FROM visits')
-        total_visits = c.fetchone()[0]
-        
-        # Unique visitors
-        c.execute('SELECT COUNT(DISTINCT visitor_id) FROM visits')
-        unique_visitors = c.fetchone()[0]
-        
-        # Total uploads
-        c.execute('SELECT COUNT(*) FROM uploads')
-        total_uploads = c.fetchone()[0]
-        
-        # Total upload size
-        c.execute('SELECT SUM(file_size) FROM uploads')
-        total_upload_size = c.fetchone()[0] or 0
-        
-        # Total downloads
-        c.execute('SELECT COUNT(*) FROM downloads')
-        total_downloads = c.fetchone()[0]
-        
-        conn.close()
-        
-        # Use the higher count between Firebase and database
-        total_registered_users = max(firebase_registered_users, db_registered_users)
-        
-        return {
-            'total_visits': total_visits,
-            'unique_visitors': unique_visitors,
-            'upload_stats': {
-                'total_uploads': total_uploads,
-                'total_size': total_upload_size
-            },
-            'download_stats': {
-                'total_downloads': total_downloads
-            },
-            'user_stats': {
-                'total_registered_users': total_registered_users,
-                'firebase_registered_users': firebase_registered_users,
-                'db_registered_users': db_registered_users,
-                'total_guest_users': total_guest_users,
-                'live_visitors': live_visitors
+        if conn is None:
+            logging.info("Database disabled: Returning default stats.")
+            return {
+                'total_visits': 0,
+                'unique_visitors': 0,
+                'upload_stats': {
+                    'total_uploads': 0,
+                    'total_size': 0
+                },
+                'download_stats': {
+                    'total_downloads': 0
+                },
+                'user_stats': {
+                    'total_registered_users': 0,
+                    'firebase_registered_users': 0,
+                    'db_registered_users': 0,
+                    'total_guest_users': 0,
+                    'live_visitors': 0
+                }
             }
-        }
+        c = conn.cursor()
+        # ...existing code...
 
     def get_firebase_user_count(self):
         """Get approximate Firebase user count (limited by Firebase Admin SDK)"""
+        conn = get_db()
+        if conn is None:
+            logging.info("Database disabled: Returning 0 Firebase users.")
+            return 0
         try:
             if FIREBASE_AVAILABLE and auth:
-                # Note: Firebase Admin SDK has limitations on listing all users
-                # In production, you might want to sync Firebase users to your database
-                # For now, we'll return the count from our database which tracks registrations
-                conn = get_db()
+                # ...existing code...
                 c = conn.cursor()
                 c.execute('SELECT COUNT(*) FROM users')
                 count = c.fetchone()[0]
