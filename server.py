@@ -1,3 +1,10 @@
+@app.errorhandler(404)
+def not_found_error(e):
+    logger.error(f"404 Not Found: {request.path}")
+    return jsonify({
+        'error': 'Not Found',
+        'message': f'The requested URL {request.path} was not found on the server.'
+    }), 404
 import traceback
 import os
 import re
